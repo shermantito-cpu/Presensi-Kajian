@@ -1,0 +1,10 @@
+{
+  "collections": {
+    "attendanceRecords": {
+      "securityRules": {
+        "read": "true",
+        "write": "true"
+      }
+    }
+  }
+}

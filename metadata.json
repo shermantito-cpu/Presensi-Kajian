@@ -1,0 +1,8 @@
+{
+  "name": "Presensi Kajian Ponpes Al-Madina",
+  "description": "Sistem presensi kajian rutin untuk civitas guru dan pegawai Ponpes Al-Madina Prabumulih.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

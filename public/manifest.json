@@ -1,0 +1,16 @@
+{
+  "name": "Presensi Kajian",
+  "short_name": "Presensi Kajian",
+  "description": "Sistem Presensi Kajian Ponpes Al-Madina",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "/logp.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}
