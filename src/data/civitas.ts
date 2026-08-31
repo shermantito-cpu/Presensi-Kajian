@@ -17,7 +17,7 @@ export const ikhwanNames = [
   'Ridho Tegar',
   'Jefi Mahendra',
   'Harbudi',
-  'KMS. Muhammad Fauzan',
+  'Kgs. Muhammad Fauzan',
   'Gusti Wijaya Santri',
   'Oktabri Selvin',
   'Kusdani',

@@ -4,4 +4,5 @@ export interface AttendanceRecord {
   scheduleId: string;
   date: string; // ISO Date string YYYY-MM-DD
   timestamp: number;
+  status?: 'approved' | 'pending';
 }

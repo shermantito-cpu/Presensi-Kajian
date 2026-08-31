@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, BellRing, Hourglass, CalendarClock, X, History } from 'lucide-react';
 import { civitasData, Gender } from '../data/civitas';
 import { schedules, Schedule } from '../data/schedules';
 import { useAttendanceStore } from '../store/useAppStore';
@@ -16,6 +16,14 @@ export default function Presensi() {
   const [selectedCivitasId, setSelectedCivitasId] = useState('');
   const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  
+  const [showInfo, setShowInfo] = useState(true);
+  const [showLupaModal, setShowLupaModal] = useState(false);
+  
+  const [lupaCivitasId, setLupaCivitasId] = useState('');
+  const [lupaDate, setLupaDate] = useState('');
+  const [lupaScheduleId, setLupaScheduleId] = useState('');
+  const [isLupaSuccess, setIsLupaSuccess] = useState(false);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const currentDayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday...
@@ -34,6 +42,7 @@ export default function Presensi() {
       civitasId: selectedCivitasId,
       scheduleId: currentSchedule.id,
       date: todayStr,
+      status: 'approved',
     });
     
     setIsSuccess(true);
@@ -41,6 +50,27 @@ export default function Presensi() {
       setIsSuccess(false);
       setSelectedCivitasId('');
     }, 3000);
+  };
+  
+  const handleLupaSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lupaCivitasId || !lupaDate || !lupaScheduleId) return;
+
+    addRecord({
+      civitasId: lupaCivitasId,
+      scheduleId: lupaScheduleId,
+      date: lupaDate,
+      status: 'pending',
+    });
+    
+    setIsLupaSuccess(true);
+    setTimeout(() => {
+      setIsLupaSuccess(false);
+      setShowLupaModal(false);
+      setLupaCivitasId('');
+      setLupaDate('');
+      setLupaScheduleId('');
+    }, 2000);
   };
 
   const filteredCivitas = civitasData.filter(c => c.gender === selectedGender);
@@ -169,12 +199,143 @@ export default function Presensi() {
                   >
                     Hadir Kajian
                   </button>
+                  
+                  <div className="pt-4 border-t border-slate-100 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowLupaModal(true)}
+                      className="inline-flex items-center text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors bg-white px-4 py-2 rounded-lg border border-slate-200 hover:border-emerald-200 shadow-sm"
+                    >
+                      <History size={16} className="mr-2" />
+                      Lupa Presensi?
+                    </button>
+                  </div>
                 </form>
               )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Info Pop Up Modal */}
+      {showInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-slate-100">
+            <button 
+              onClick={() => setShowInfo(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+            >
+              <X size={20} />
+            </button>
+            <div className="p-6">
+              <div className="flex items-center text-emerald-600 mb-2">
+                <div className="bg-emerald-100 p-2.5 rounded-xl mr-4 shadow-sm">
+                  <BellRing size={24} className="text-emerald-700" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 tracking-tight">Pengingat</h3>
+              </div>
+              <div className="space-y-4 mt-6">
+                <div className="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <Hourglass className="shrink-0 text-emerald-500 mt-0.5 mr-3" size={20} />
+                  <p className="text-slate-700 leading-relaxed text-sm">Batas Pengisian Presensi Kajian sampai pukul 00.00 WIB.</p>
+                </div>
+                <div className="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <CalendarClock className="shrink-0 text-emerald-500 mt-0.5 mr-3" size={20} />
+                  <p className="text-slate-700 leading-relaxed text-sm">Jika terlupa mengisi presensi atau ingin mengisi presensi pada pekan sebelumnya, silahkan klik tombol Lupa Presensi.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowInfo(false)}
+                className="w-full mt-8 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold py-3 rounded-xl transition-all shadow-sm"
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lupa Presensi Modal */}
+      {showLupaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800">Form Lupa Presensi</h3>
+              <button 
+                onClick={() => setShowLupaModal(false)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleLupaSubmit} className="p-6 space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Nama Civitas</label>
+                <select
+                  value={lupaCivitasId}
+                  onChange={(e) => setLupaCivitasId(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-white"
+                  required
+                >
+                  <option value="">-- Pilih Nama Civitas --</option>
+                  {civitasData.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.gender})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Tanggal Kehadiran</label>
+                <input 
+                  type="date"
+                  value={lupaDate}
+                  onChange={(e) => setLupaDate(e.target.value)}
+                  max={todayStr}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Jadwal Kajian yang Dihadiri</label>
+                <select
+                  value={lupaScheduleId}
+                  onChange={(e) => setLupaScheduleId(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-white"
+                  required
+                >
+                  <option value="">-- Pilih Jadwal Kajian --</option>
+                  {schedules.map(s => (
+                    <option key={s.id} value={s.id}>{s.dayName} - {s.ustadz} ({s.kitab})</option>
+                  ))}
+                </select>
+              </div>
+
+              {isLupaSuccess && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-lg flex items-center text-sm">
+                  <CheckCircle2 className="shrink-0 mr-2 text-emerald-600" size={18} />
+                  <span className="font-medium">Pengajuan presensi manual berhasil dikirim ke Admin.</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex justify-end gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setShowLupaModal(false)}
+                  className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit"
+                  disabled={!lupaCivitasId || !lupaDate || !lupaScheduleId || isLupaSuccess}
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 rounded-xl transition-colors shadow-sm"
+                >
+                  Ajukan Presensi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

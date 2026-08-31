@@ -13,7 +13,7 @@ import { cn } from '../lib/utils';
 export default function Dashboard() {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { records, removeRecordById, addRecord } = useAttendanceStore();
+  const { records, removeRecordById, addRecord, updateRecordStatus } = useAttendanceStore();
   
   const [activeTab, setActiveTab] = useState<Gender>('Ikhwan');
   const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly');
@@ -52,6 +52,7 @@ export default function Dashboard() {
 
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
+      if (r.status === 'pending') return false;
       const d = new Date(r.date);
       if (viewMode === 'weekly') {
         return isWithinInterval(d, { start: weekStart, end: weekEnd });
@@ -60,6 +61,8 @@ export default function Dashboard() {
       }
     });
   }, [records, viewMode, weekStart, weekEnd, monthStart, monthEnd]);
+  
+  const allPendingRecords = useMemo(() => records.filter(r => r.status === 'pending'), [records]);
 
   const civitasList = useMemo(() => civitasData.filter(c => c.gender === activeTab), [activeTab]);
 
@@ -244,6 +247,68 @@ export default function Dashboard() {
               <p className="text-amber-700/80 text-sm mt-1">
                 Terdapat <strong>{notMetRequirementCount} civitas</strong> di kategori {activeTab} yang belum memenuhi standar kehadiran {viewMode === 'weekly' ? 'pekan' : 'bulan'} ini (Minimal {minRequirement} kali).
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Pengajuan Presensi Manual (Pending) */}
+        {allPendingRecords.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="px-6 py-4 bg-blue-100/50 border-b border-blue-200 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-blue-900">Pengajuan Presensi Manual</h3>
+                <p className="text-xs text-blue-700 mt-1">Menunggu persetujuan Admin ({allPendingRecords.length} pengajuan)</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-blue-50/50 border-b border-blue-200">
+                    <th className="px-6 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wider">Nama Civitas</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wider">Tanggal & Jadwal</th>
+                    <th className="px-6 py-3 text-xs font-semibold text-blue-800 uppercase tracking-wider text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-blue-100">
+                  {allPendingRecords.map(record => {
+                    const civitas = civitasData.find(c => c.id === record.civitasId);
+                    const schedule = schedules.find(s => s.id === record.scheduleId);
+                    if (!civitas) return null;
+                    return (
+                      <tr key={record.id} className="hover:bg-blue-100/30">
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-slate-800 text-sm">{civitas.name}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{civitas.gender}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-slate-700">{format(new Date(record.date), "dd MMM yyyy", { locale: id })}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{schedule ? `${schedule.dayName} - ${schedule.ustadz}` : '-'}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={() => {
+                                if (record.id) removeRecordById(record.id);
+                              }}
+                              className="text-xs font-medium text-rose-600 hover:text-rose-700 bg-white border border-rose-200 hover:bg-rose-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              Tolak
+                            </button>
+                            <button 
+                              onClick={() => {
+                                if (record.id) updateRecordStatus(record.id, 'approved');
+                              }}
+                              className="text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+                            >
+                              Setujui (Hadir)
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

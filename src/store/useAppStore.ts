@@ -23,14 +23,15 @@ export function useAttendanceStore() {
   const addRecord = async (record: Omit<AttendanceRecord, 'id' | 'timestamp'>) => {
     // Check if already attended on this date and schedule (client-side check for rapid clicks)
     const exists = records.some(
-      (r) => r.civitasId === record.civitasId && r.date === record.date && r.scheduleId === record.scheduleId
+      (r) => r.civitasId === record.civitasId && r.date === record.date && r.scheduleId === record.scheduleId && r.status !== 'pending'
     );
     
-    if (exists) return;
+    if (exists && record.status !== 'pending') return;
     
     try {
       const newRecord = {
         ...record,
+        status: record.status || 'approved',
         timestamp: Date.now(),
       };
       await addDoc(collection(db, 'attendanceRecords'), newRecord);
@@ -64,7 +65,18 @@ export function useAttendanceStore() {
     }
   }
 
-  return { records, addRecord, removeRecord, removeRecordById };
+  const updateRecordStatus = async (id: string, newStatus: 'approved' | 'pending') => {
+    try {
+      const { updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'attendanceRecords', id), {
+        status: newStatus
+      });
+    } catch (error) {
+      console.error("Error updating document status: ", error);
+    }
+  }
+
+  return { records, addRecord, removeRecord, removeRecordById, updateRecordStatus };
 }
 
 export function useAuth() {
