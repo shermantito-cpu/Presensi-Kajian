@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, BellRing, Hourglass, CalendarClock, X, History } from 'lucide-react';
+import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, BellRing, Hourglass, CalendarClock, X, History, Lock } from 'lucide-react';
 import { civitasData, Gender } from '../data/civitas';
 import { schedules, Schedule } from '../data/schedules';
-import { useAttendanceStore } from '../store/useAppStore';
+import { useAttendanceStore, useSettingsStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
 
 export default function Presensi() {
   const navigate = useNavigate();
   const { addRecord, records } = useAttendanceStore();
+  const { isKajianOpen } = useSettingsStore();
   
   const [selectedGender, setSelectedGender] = useState<Gender | null>(null);
   const [selectedCivitasId, setSelectedCivitasId] = useState('');
@@ -105,7 +106,29 @@ export default function Presensi() {
             <p className="text-slate-500 mt-2">{format(new Date(), 'EEEE, dd MMMM yyyy', { locale: id })}</p>
           </div>
 
-          {!currentSchedule ? (
+          {!isKajianOpen ? (
+            <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-400 to-emerald-600"></div>
+              <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-100">
+                <Lock className="h-8 w-8 text-slate-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-800 mb-2">
+                Kajian {currentSchedule ? currentSchedule.ustadz : 'Hari Ini'}
+              </h3>
+              <div className="inline-block bg-rose-100 text-rose-700 px-4 py-1.5 rounded-full font-semibold text-sm mb-6">
+                Libur
+              </div>
+              
+              <div className="space-y-3 text-slate-600 max-w-md mx-auto">
+                <p className="leading-relaxed">
+                  InsyaaAllah kajian akan kembali dilaksanakan pada pertemuan selanjutnya.
+                </p>
+                <p className="leading-relaxed font-medium italic text-emerald-700">
+                  Baarakallah fiikum, semoga Allah mudahkan.
+                </p>
+              </div>
+            </div>
+          ) : !currentSchedule ? (
             <div className="bg-orange-50 text-orange-800 p-6 rounded-xl border border-orange-200 text-center">
               <CalendarIcon className="mx-auto h-12 w-12 text-orange-400 mb-4" />
               <h3 className="text-lg font-semibold">Tidak Ada Kajian Hari Ini</h3>

@@ -2,18 +2,19 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek, isWithinInterval, subWeeks, getISOWeek, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { LogOut, Download, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, X, Trash2, CalendarDays, Pencil } from 'lucide-react';
+import { LogOut, Download, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, X, Trash2, CalendarDays, Pencil, Power, PowerOff } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { civitasData, Gender } from '../data/civitas';
 import { schedules } from '../data/schedules';
-import { useAttendanceStore, useAuth } from '../store/useAppStore';
+import { useAttendanceStore, useAuth, useSettingsStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { records, removeRecordById, addRecord, updateRecordStatus } = useAttendanceStore();
+  const { isKajianOpen, setKajianStatus } = useSettingsStore();
   
   const [activeTab, setActiveTab] = useState<Gender>('Ikhwan');
   const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly');
@@ -166,6 +167,25 @@ export default function Dashboard() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-6">
         
+        {/* Toggle Kajian Status */}
+        <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">Status Akses Presensi</h3>
+            <p className="text-sm text-slate-500 mt-1">Kontrol apakah form presensi saat ini dibuka atau diliburkan.</p>
+          </div>
+          <button
+            onClick={() => setKajianStatus(!isKajianOpen)}
+            className={`px-5 py-2.5 rounded-xl font-semibold flex items-center transition-all shadow-sm ${
+              isKajianOpen 
+                ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 hover:border-rose-300' 
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {isKajianOpen ? <PowerOff size={18} className="mr-2" /> : <Power size={18} className="mr-2" />}
+            {isKajianOpen ? 'Tutup Presensi (Libur)' : 'Buka Presensi (Aktif)'}
+          </button>
+        </div>
+
         <div className="flex flex-col sm:flex-row justify-between gap-4 mb-2">
           <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 flex w-fit">
             <button

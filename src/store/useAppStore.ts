@@ -100,3 +100,32 @@ export function useAuth() {
 
   return { role, login, logout };
 }
+
+export function useSettingsStore() {
+  const [isKajianOpen, setIsKajianOpen] = useState<boolean>(true);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'kajianStatus'), (docSnap) => {
+      if (docSnap.exists()) {
+        setIsKajianOpen(docSnap.data().isOpen);
+      } else {
+        // Initialize if not exists
+        import('firebase/firestore').then(({ setDoc }) => {
+          setDoc(doc(db, 'settings', 'kajianStatus'), { isOpen: true });
+        }).catch(console.error);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const setKajianStatus = async (isOpen: boolean) => {
+    try {
+      const { setDoc } = await import('firebase/firestore');
+      await setDoc(doc(db, 'settings', 'kajianStatus'), { isOpen }, { merge: true });
+    } catch (error) {
+      console.error("Error updating settings", error);
+    }
+  };
+
+  return { isKajianOpen, setKajianStatus };
+}

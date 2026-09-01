@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, GraduationCap, ScrollText, Settings, Info, X, LayoutDashboard, BookOpen, HeartCrack, Clock, TrendingDown, Map } from 'lucide-react';
+import { Users, GraduationCap, ScrollText, Settings, Info, X, LayoutDashboard, BookOpen, Quote } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function Home() {
@@ -213,51 +213,35 @@ export default function Home() {
             
             <div className="px-6 md:px-10 pb-8 overflow-y-auto">
               <div className="space-y-4">
-                <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
-                  <div className="bg-rose-100 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-rose-200 group-hover:scale-110 transition-transform">
-                    <HeartCrack size={22} strokeWidth={1.5} />
+                <div className="bg-slate-50 p-6 md:p-8 rounded-3xl border border-slate-100 relative group transition-colors hover:bg-slate-100/50">
+                  <div className="absolute top-6 right-6 text-slate-200 group-hover:text-rose-100 transition-colors">
+                    <Quote size={64} className="rotate-180 opacity-50" />
                   </div>
-                  <div className="flex-1 mt-0.5">
-                    <h4 className="text-lg font-bold text-slate-800 mb-1.5">Hati Menjadi Keras</h4>
-                    <p className="text-slate-600 leading-relaxed text-sm md:text-base">
-                      Seseorang yang lama meninggalkan majelis ilmu dan ulama akan kehilangan cahaya petunjuk, sehingga hatinya menjadi keras, sulit menerima nasihat, dan mati rasa terhadap nasihat kebaikan.
+                  
+                  <div className="relative z-10">
+                    <p className="text-slate-700 leading-relaxed text-base md:text-lg italic mb-6">
+                      "Jika seseorang tidak menghadiri majelis ilmu, tidak pernah mendengar khutbah, dan tidak pernah perhatian dengan apa yang dinukil oleh para ulama, maka akan semakin bertambah kelalaiannya, dan boleh jadi hatinya mengeras hingga membatu, sehingga ia termasuk orang-orang yang lalai."
                     </p>
-                  </div>
-                </div>
-
-                <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
-                  <div className="bg-rose-100 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-rose-200 group-hover:scale-110 transition-transform">
-                    <Clock size={22} strokeWidth={1.5} />
-                  </div>
-                  <div className="flex-1 mt-0.5">
-                    <h4 className="text-lg font-bold text-slate-800 mb-1.5">Bertambahnya Kelalaian</h4>
-                    <p className="text-slate-600 leading-relaxed text-sm md:text-base">
-                      Tanpa pengingat dan perhatian terhadap ilmu, seseorang mudah terperosok ke dalam kelalaian duniawi bahkan berani melakukan dosa.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
-                  <div className="bg-rose-100 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-rose-200 group-hover:scale-110 transition-transform">
-                    <TrendingDown size={22} strokeWidth={1.5} />
-                  </div>
-                  <div className="flex-1 mt-0.5">
-                    <h4 className="text-lg font-bold text-slate-800 mb-1.5">Hilangnya Keberkahan</h4>
-                    <p className="text-slate-600 leading-relaxed text-sm md:text-base">
-                      Jauh dari majelis ilmu menyebabkan hilangnya keberkahan dalam hidup, usaha, dan rezeki.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="group flex gap-5 items-start p-4 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
-                  <div className="bg-rose-100 text-rose-600 w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-rose-200 group-hover:scale-110 transition-transform">
-                    <Map size={22} strokeWidth={1.5} />
-                  </div>
-                  <div className="flex-1 mt-0.5">
-                    <h4 className="text-lg font-bold text-slate-800 mb-1.5">Terancam Tersesat</h4>
-                    <p className="text-slate-600 leading-relaxed text-sm md:text-base">
-                      Tanpa bimbingan ilmu, seseorang bagaikan berjalan tanpa panduan di tempat gelap, sehingga mudah keliru dalam memahami ibadah dan menjalani hidup.
-                    </p>
+                    
+                    <div className="mt-6 pt-5 border-t border-slate-200/60">
+                      <p className="font-bold text-slate-800 text-sm md:text-base">
+                        Syaikh Abdul Aziz bin 'Abdillah bin Baz rahimahullah
+                      </p>
+                      <p className="text-slate-500 text-sm mt-0.5">
+                        Mufti Kerajaan Saudi Arabia di masa silam
+                      </p>
+                      <p className="text-slate-400 text-xs md:text-sm mt-2 italic font-medium">
+                        (Majmu' Fatawa Ibnu Baz, 12: 324)
+                      </p>
+                      <a 
+                        href="https://rumaysho.com/15252-akibat-meninggalkan-ngaji-tholabul-ilmi.html" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="inline-block mt-4 text-xs md:text-sm text-rose-600 hover:text-rose-700 underline underline-offset-4 font-medium"
+                      >
+                        Sumber: rumaysho.com
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>
