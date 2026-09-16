@@ -46,6 +46,18 @@ export default function Dashboard() {
   const weekStart = startOfWeek(targetWeekDate, { weekStartsOn: 1 }); // Monday start
   const weekEnd = endOfWeek(targetWeekDate, { weekStartsOn: 1 });
 
+  // Custom week number relative to July 27, 2026
+  const getCustomWeekNumber = (date: Date) => {
+    const startDate = new Date(2026, 6, 27); // July 27, 2026 (Month is 0-indexed)
+    const currentWeekStart = startOfWeek(date, { weekStartsOn: 1 });
+    currentWeekStart.setHours(0,0,0,0);
+    
+    const diffTime = currentWeekStart.getTime() - startDate.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return 1 + Math.floor(diffDays / 7);
+  };
+
+
   // Monthly logic
   const targetMonthDate = subMonths(currentDate, -monthOffset);
   const monthStart = startOfMonth(targetMonthDate);
@@ -90,7 +102,7 @@ export default function Dashboard() {
     doc.setFontSize(12);
     
     if (viewMode === 'weekly') {
-      doc.text(`Pekan ke-${getISOWeek(targetWeekDate)} (${format(weekStart, 'dd MMM yyyy', { locale: id })} - ${format(weekEnd, 'dd MMM yyyy', { locale: id })})`, 14, 28);
+      doc.text(`Pekan ke-${getCustomWeekNumber(targetWeekDate)} (${format(weekStart, 'dd MMM yyyy', { locale: id })} - ${format(weekEnd, 'dd MMM yyyy', { locale: id })})`, 14, 28);
     } else {
       doc.text(`Bulan ${format(monthStart, 'MMMM yyyy', { locale: id })}`, 14, 28);
     }
@@ -213,7 +225,7 @@ export default function Dashboard() {
                 <ChevronLeft size={20} />
               </button>
               <div className="text-center px-4 min-w-[150px]">
-                <span className="block text-sm font-semibold text-slate-700">Pekan ke-{getISOWeek(targetWeekDate)}</span>
+                <span className="block text-sm font-semibold text-slate-700">Pekan ke-{getCustomWeekNumber(targetWeekDate)}</span>
                 <span className="block text-xs text-slate-500">
                   {format(weekStart, 'dd MMM')} - {format(weekEnd, 'dd MMM yyyy')}
                 </span>
