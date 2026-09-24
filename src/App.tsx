@@ -5,6 +5,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Presensi from './pages/Presensi';
+import PresensiKhusus from './pages/PresensiKhusus';
 import { useAuth } from './store/useAppStore';
 import { schedules } from './data/schedules';
 
@@ -110,6 +111,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/presensi" element={<Presensi />} />
+            <Route path="/presensi-khusus" element={<PresensiKhusus />} />
             <Route 
               path="/dashboard" 
               element={

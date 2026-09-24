@@ -90,10 +90,10 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            <div onClick={showDevToast} className="cursor-pointer flex-1">
-              <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-blue-700 transition-colors">Kajian Khusus Guru</h3>
+            <div onClick={() => navigate('/presensi-khusus')} className="cursor-pointer flex-1">
+              <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-blue-700 transition-colors">Kajian Khusus Guru/Civitas</h3>
               <p className="text-slate-500 text-sm leading-relaxed">
-                Sistem presensi dan penjadwalan khusus untuk Guru.
+                Sistem presensi kajian khusus Guru/Civitas (Sabtu, 19 September 2026).
               </p>
             </div>
           </div>

@@ -17,7 +17,7 @@ export default function Dashboard() {
   const { isKajianOpen, setKajianStatus } = useSettingsStore();
   
   const [activeTab, setActiveTab] = useState<Gender>('Ikhwan');
-  const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly');
+  const [viewMode, setViewMode] = useState<'weekly' | 'monthly' | 'khusus'>('weekly');
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -66,6 +66,11 @@ export default function Dashboard() {
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
       if (r.status === 'pending') return false;
+      
+      if (viewMode === 'khusus') {
+        return r.scheduleId === 'khusus_19sept2026';
+      }
+      
       const d = new Date(r.date);
       if (viewMode === 'weekly') {
         return isWithinInterval(d, { start: weekStart, end: weekEnd });
@@ -79,7 +84,7 @@ export default function Dashboard() {
 
   const civitasList = useMemo(() => civitasData.filter(c => c.gender === activeTab), [activeTab]);
 
-  const minRequirement = viewMode === 'weekly' ? 1 : 4;
+  const minRequirement = viewMode === 'monthly' ? 4 : 1;
 
   const recap = useMemo(() => {
     return civitasList.map(c => {
@@ -103,8 +108,10 @@ export default function Dashboard() {
     
     if (viewMode === 'weekly') {
       doc.text(`Pekan ke-${getCustomWeekNumber(targetWeekDate)} (${format(weekStart, 'dd MMM yyyy', { locale: id })} - ${format(weekEnd, 'dd MMM yyyy', { locale: id })})`, 14, 28);
-    } else {
+    } else if (viewMode === 'monthly') {
       doc.text(`Bulan ${format(monthStart, 'MMMM yyyy', { locale: id })}`, 14, 28);
+    } else {
+      doc.text(`Kajian Khusus: Sabtu, 19 September 2026`, 14, 28);
     }
     
     const headerTitle = `Status (Min ${minRequirement}x)`;
@@ -151,6 +158,16 @@ export default function Dashboard() {
   const totalPages = Math.max(1, Math.ceil(historyRecords.length / rowsPerPage));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const currentRecords = historyRecords.slice((safeCurrentPage - 1) * rowsPerPage, safeCurrentPage * rowsPerPage);
+
+  const existingRecord = useMemo(() => {
+    if (!editingCivitas || !editDate || !editScheduleId) return null;
+    return records.find(r => r.civitasId === editingCivitas.id && r.date === editDate && r.scheduleId === editScheduleId);
+  }, [records, editingCivitas, editDate, editScheduleId]);
+
+  const civitasRecords = useMemo(() => {
+    if (!editingCivitas) return [];
+    return filteredRecords.filter(r => r.civitasId === editingCivitas.id);
+  }, [filteredRecords, editingCivitas]);
 
   return (
     <div className="flex-1 flex flex-col">
@@ -212,6 +229,12 @@ export default function Dashboard() {
             >
               <CalendarDays size={16} /> Bulanan
             </button>
+            <button
+              onClick={() => setViewMode('khusus')}
+              className={cn("px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2", viewMode === 'khusus' ? "bg-emerald-100 text-emerald-800" : "text-slate-600 hover:bg-slate-50")}
+            >
+              Kajian Khusus
+            </button>
           </div>
         </div>
 
@@ -238,7 +261,7 @@ export default function Dashboard() {
                 <ChevronRight size={20} />
               </button>
             </div>
-          ) : (
+          ) : viewMode === 'monthly' ? (
             <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-slate-200 w-fit">
               <button 
                 onClick={() => setMonthOffset(prev => prev - 1)}
@@ -257,6 +280,13 @@ export default function Dashboard() {
                 <ChevronRight size={20} />
               </button>
             </div>
+          ) : (
+            <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-slate-200 w-fit">
+              <div className="text-center px-4 min-w-[150px] py-1.5">
+                <span className="block text-sm font-semibold text-slate-700">Kajian Khusus</span>
+                <span className="block text-xs text-slate-500">Sabtu, 19 Sept 2026</span>
+              </div>
+            </div>
           )}
 
           <div className="flex flex-col gap-3 items-end">
@@ -265,19 +295,19 @@ export default function Dashboard() {
               className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-medium transition-colors shadow-sm"
             >
               <Download size={18} />
-              <span className="hidden sm:inline">Unduh PDF {viewMode === 'weekly' ? 'Pekan Ini' : 'Bulan Ini'}</span>
+              <span className="hidden sm:inline">Unduh PDF {viewMode === 'weekly' ? 'Pekan Ini' : viewMode === 'monthly' ? 'Bulan Ini' : 'Kajian Khusus'}</span>
             </button>
           </div>
         </div>
 
         {/* Warning notification if current week has people who haven't attended */}
-        {((viewMode === 'weekly' && weekOffset === 0) || (viewMode === 'monthly' && monthOffset === 0)) && notMetRequirementCount > 0 && (
+        {((viewMode === 'weekly' && weekOffset === 0) || (viewMode === 'monthly' && monthOffset === 0) || viewMode === 'khusus') && notMetRequirementCount > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
             <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
             <div>
-              <h4 className="text-amber-800 font-semibold">Perhatian {viewMode === 'weekly' ? 'Pekan' : 'Bulan'} Ini</h4>
+              <h4 className="text-amber-800 font-semibold">Perhatian {viewMode === 'weekly' ? 'Pekan' : viewMode === 'monthly' ? 'Bulan' : 'Kajian'} Ini</h4>
               <p className="text-amber-700/80 text-sm mt-1">
-                Terdapat <strong>{notMetRequirementCount} civitas</strong> di kategori {activeTab} yang belum memenuhi standar kehadiran {viewMode === 'weekly' ? 'pekan' : 'bulan'} ini (Minimal {minRequirement} kali).
+                Terdapat <strong>{notMetRequirementCount} civitas</strong> di kategori {activeTab} yang belum memenuhi standar kehadiran {viewMode === 'weekly' ? 'pekan ini' : viewMode === 'monthly' ? 'bulan ini' : 'kajian khusus'} (Minimal {minRequirement} kali).
               </p>
             </div>
           </div>
@@ -369,7 +399,7 @@ export default function Dashboard() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama Civitas</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Kehadiran ({viewMode === 'weekly' ? 'Pekan' : 'Bulan'} Ini)</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Kehadiran ({viewMode === 'weekly' ? 'Pekan Ini' : viewMode === 'monthly' ? 'Bulan Ini' : 'Khusus'})</th>
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Status (Min {minRequirement}x)</th>
                   <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Aksi</th>
                 </tr>
@@ -403,11 +433,16 @@ export default function Dashboard() {
                       <button
                         onClick={() => {
                           setEditingCivitas(r);
-                          setEditScheduleId(schedules[0].id);
-                          setEditDate(format(new Date(), 'yyyy-MM-dd'));
+                          if (viewMode === 'khusus') {
+                            setEditScheduleId('khusus_19sept2026');
+                            setEditDate('2026-09-19');
+                          } else {
+                            setEditScheduleId(schedules[0].id);
+                            setEditDate(format(new Date(), 'yyyy-MM-dd'));
+                          }
                         }}
                         className="text-slate-400 hover:text-emerald-600 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors inline-flex"
-                        title="Tambah Kehadiran Manual"
+                        title="Edit Status Kehadiran"
                       >
                         <Pencil size={18} />
                       </button>
@@ -426,7 +461,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-semibold text-slate-800">Ubah Status Menjadi Hadir</h3>
+              <h3 className="font-semibold text-slate-800">Edit Status Kehadiran</h3>
               <button onClick={() => setEditingCivitas(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors">
                 <X size={20} />
               </button>
@@ -457,30 +492,69 @@ export default function Dashboard() {
                   {schedules.map(s => (
                     <option key={s.id} value={s.id}>{s.dayName} - {s.ustadz} ({s.kitab})</option>
                   ))}
+                  <option value="khusus_19sept2026">Kajian Khusus Guru/Civitas (Sabtu, 19 Sept)</option>
                 </select>
               </div>
+              
+              {existingRecord && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-800 text-sm">
+                  <CheckCircle2 size={18} className="text-emerald-600" />
+                  Civitas ini sudah tercatat <strong>Hadir</strong> pada jadwal ini.
+                </div>
+              )}
+              {civitasRecords.length > 0 && !existingRecord && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-sm">
+                  Civitas ini memiliki <strong>{civitasRecords.length}</strong> catatan kehadiran pada {viewMode === 'weekly' ? 'pekan ini' : viewMode === 'monthly' ? 'bulan ini' : 'kajian khusus'}. Klik "Batalkan Kehadiran" di bawah untuk menghapusnya.
+                </div>
+              )}
             </div>
-            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50">
-              <button 
-                onClick={() => setEditingCivitas(null)}
-                className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
-              >
-                Batal
-              </button>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-between gap-3 bg-slate-50">
               <button 
                 onClick={async () => {
-                  if (!editDate || !editScheduleId) return;
-                  await addRecord({
-                    civitasId: editingCivitas.id,
-                    scheduleId: editScheduleId,
-                    date: editDate
-                  });
-                  setEditingCivitas(null);
+                  if (existingRecord) {
+                    await removeRecordById(existingRecord.id);
+                    setEditingCivitas(null);
+                  } else if (civitasRecords.length > 0) {
+                    // Delete all records in the current view
+                    for (const rec of civitasRecords) {
+                      await removeRecordById(rec.id);
+                    }
+                    setEditingCivitas(null);
+                  } else {
+                    alert('Civitas ini belum memiliki data kehadiran pada pekan/bulan/jadwal khusus ini.');
+                  }
                 }}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-sm"
+                className="px-5 py-2.5 text-sm font-medium text-rose-600 hover:text-white hover:bg-rose-600 rounded-xl transition-colors border border-rose-200 hover:border-rose-600 shadow-sm"
               >
-                Simpan Kehadiran
+                Batalkan Kehadiran
               </button>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setEditingCivitas(null)}
+                  className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  Tutup
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (!editDate || !editScheduleId) return;
+                    if (existingRecord) {
+                      alert('Civitas ini sudah tercatat hadir pada jadwal ini.');
+                      return;
+                    }
+                    await addRecord({
+                      civitasId: editingCivitas.id,
+                      scheduleId: editScheduleId,
+                      date: editDate
+                    });
+                    setEditingCivitas(null);
+                  }}
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-sm"
+                >
+                  Simpan Kehadiran
+                </button>
+              </div>
             </div>
           </div>
         </div>
