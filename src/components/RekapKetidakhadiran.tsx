@@ -7,30 +7,25 @@ import {
   endOfMonth, 
   subDays, 
   subMonths,
-  eachDayOfInterval,
   parseISO
 } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { 
-  Calendar, 
   Download, 
   FileSpreadsheet, 
   Search, 
-  Users, 
   UserX, 
-  UserCheck, 
   TrendingDown, 
   AlertCircle, 
   CheckCircle2, 
-  SlidersHorizontal,
-  ChevronDown,
-  ChevronUp,
-  Info,
   CalendarRange,
   XCircle,
-  HelpCircle,
   Clock,
-  BookOpen
+  BookOpen,
+  CalendarCheck,
+  Check,
+  X,
+  BadgeInfo
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -44,20 +39,29 @@ interface RekapKetidakhadiranProps {
   onOpenEditCivitas?: (civitas: Civitas) => void;
 }
 
-type PeriodPreset = 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'last_30_days' | 'all_time' | 'custom';
-type SessionBasis = 'recorded' | 'scheduled' | 'custom';
+type PeriodPreset = 'contoh_user' | 'this_month' | 'last_month' | 'this_week' | 'last_week' | 'last_30_days' | 'all_time' | 'custom';
+type CalculationRule = 'weekly_rule' | 'daily_session';
 
-export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: RekapKetidakhadiranProps) {
+export interface WeekPeriodInfo {
+  weekNumber: number;
+  label: string;
+  dateRangeLabel: string;
+  startISO: string;
+  endISO: string;
+  calendarWeekStartISO: string;
+  calendarWeekEndISO: string;
+}
+
+export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProps) {
   const today = new Date();
   
-  // Date preset state
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('this_month');
-  const [startDateStr, setStartDateStr] = useState<string>(format(startOfMonth(today), 'yyyy-MM-dd'));
-  const [endDateStr, setEndDateStr] = useState<string>(format(endOfMonth(today), 'yyyy-MM-dd'));
+  // Date preset state (default to the user's reference period: 31 Agustus 2026 - 04 Oktober 2026)
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('contoh_user');
+  const [startDateStr, setStartDateStr] = useState<string>('2026-08-31');
+  const [endDateStr, setEndDateStr] = useState<string>('2026-10-04');
 
-  // Session basis state
-  const [sessionBasis, setSessionBasis] = useState<SessionBasis>('recorded');
-  const [customSessionCount, setCustomSessionCount] = useState<number>(4);
+  // Calculation Rule: Weekly rule (Min 1x per pekan = hadir penuh) vs Daily session
+  const [calculationRule, setCalculationRule] = useState<CalculationRule>('weekly_rule');
 
   // Filters & Sorting state
   const [selectedGender, setSelectedGender] = useState<'All' | Gender>('All');
@@ -72,8 +76,14 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
     attendedRecords: AttendanceRecord[];
     attendedCount: number;
     absentCount: number;
-    totalSessions: number;
+    totalWeeks: number;
+    attendedWeeks: number;
     absenceRate: number;
+    weeklyBreakdown: {
+      week: WeekPeriodInfo;
+      hasAttended: boolean;
+      recordsInWeek: AttendanceRecord[];
+    }[];
   } | null>(null);
 
   // Handle Preset Changes
@@ -82,19 +92,10 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
     const now = new Date();
     
     switch (preset) {
-      case 'this_week': {
-        const s = startOfWeek(now, { weekStartsOn: 1 });
-        const e = endOfWeek(now, { weekStartsOn: 1 });
-        setStartDateStr(format(s, 'yyyy-MM-dd'));
-        setEndDateStr(format(e, 'yyyy-MM-dd'));
-        break;
-      }
-      case 'last_week': {
-        const lastWeekDate = subDays(now, 7);
-        const s = startOfWeek(lastWeekDate, { weekStartsOn: 1 });
-        const e = endOfWeek(lastWeekDate, { weekStartsOn: 1 });
-        setStartDateStr(format(s, 'yyyy-MM-dd'));
-        setEndDateStr(format(e, 'yyyy-MM-dd'));
+      case 'contoh_user': {
+        // Contoh spesifik dari user: 31 Agustus 2026 - 04 Oktober 2026
+        setStartDateStr('2026-08-31');
+        setEndDateStr('2026-10-04');
         break;
       }
       case 'this_month': {
@@ -112,6 +113,21 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
         setEndDateStr(format(e, 'yyyy-MM-dd'));
         break;
       }
+      case 'this_week': {
+        const s = startOfWeek(now, { weekStartsOn: 1 });
+        const e = endOfWeek(now, { weekStartsOn: 1 });
+        setStartDateStr(format(s, 'yyyy-MM-dd'));
+        setEndDateStr(format(e, 'yyyy-MM-dd'));
+        break;
+      }
+      case 'last_week': {
+        const lastWeekDate = subDays(now, 7);
+        const s = startOfWeek(lastWeekDate, { weekStartsOn: 1 });
+        const e = endOfWeek(lastWeekDate, { weekStartsOn: 1 });
+        setStartDateStr(format(s, 'yyyy-MM-dd'));
+        setEndDateStr(format(e, 'yyyy-MM-dd'));
+        break;
+      }
       case 'last_30_days': {
         const s = subDays(now, 30);
         setStartDateStr(format(s, 'yyyy-MM-dd'));
@@ -119,7 +135,6 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
         break;
       }
       case 'all_time': {
-        // Earliest known date in app (July 2026 or minimum date in records)
         let minDate = '2026-07-01';
         if (records.length > 0) {
           const dates = records.map(r => r.date).filter(Boolean).sort();
@@ -146,7 +161,62 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
     });
   }, [records, startDateStr, endDateStr]);
 
-  // Unique recorded sessions in this period (distinct date + scheduleId)
+  // Generate Weeks List (Pekan Kajian Senin-Jum'at / Kalender) within the date range
+  const weeksInPeriod = useMemo(() => {
+    try {
+      const start = parseISO(startDateStr);
+      const end = parseISO(endDateStr);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
+
+      let currentMonday = startOfWeek(start, { weekStartsOn: 1 });
+      const weeks: WeekPeriodInfo[] = [];
+      let weekIndex = 1;
+
+      while (currentMonday <= end) {
+        const currentSunday = endOfWeek(currentMonday, { weekStartsOn: 1 });
+        
+        // Effective start and end within interval
+        const effectiveStart = currentMonday < start ? start : currentMonday;
+        const effectiveEnd = currentSunday > end ? end : currentSunday;
+
+        if (effectiveStart <= effectiveEnd) {
+          const startISO = format(effectiveStart, 'yyyy-MM-dd');
+          const endISO = format(effectiveEnd, 'yyyy-MM-dd');
+          const calStartISO = format(currentMonday, 'yyyy-MM-dd');
+          const calEndISO = format(currentSunday, 'yyyy-MM-dd');
+
+          // Human friendly range label (e.g. 31 Ags - 04 Sep 2026)
+          const isSameMonth = effectiveStart.getMonth() === effectiveEnd.getMonth();
+          const rangeLabel = isSameMonth
+            ? `${format(effectiveStart, 'dd', { locale: id })} - ${format(effectiveEnd, 'dd MMM yyyy', { locale: id })}`
+            : `${format(effectiveStart, 'dd MMM', { locale: id })} - ${format(effectiveEnd, 'dd MMM yyyy', { locale: id })}`;
+
+          weeks.push({
+            weekNumber: weekIndex,
+            label: `Pekan ${weekIndex}`,
+            dateRangeLabel: rangeLabel,
+            startISO,
+            endISO,
+            calendarWeekStartISO: calStartISO,
+            calendarWeekEndISO: calEndISO,
+          });
+
+          weekIndex++;
+        }
+
+        // Advance by 7 days to next Monday
+        currentMonday = new Date(currentMonday);
+        currentMonday.setDate(currentMonday.getDate() + 7);
+      }
+
+      return weeks;
+    } catch (err) {
+      console.error('Error calculating weeks', err);
+      return [];
+    }
+  }, [startDateStr, endDateStr]);
+
+  // Unique recorded sessions (dates where attendance actually took place)
   const recordedSessionsList = useMemo(() => {
     const sessionMap = new Map<string, { date: string; scheduleId: string; count: number }>();
     recordsInPeriod.forEach(r => {
@@ -161,75 +231,97 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
     return Array.from(sessionMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [recordsInPeriod]);
 
-  // Scheduled calendar weekdays in this period (Senin - Jum'at)
-  const scheduledSessionsCount = useMemo(() => {
-    try {
-      const start = parseISO(startDateStr);
-      const end = parseISO(endDateStr);
-      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0;
-      
-      const allDays = eachDayOfInterval({ start, end });
-      // Day 1 to 5 are Monday to Friday
-      let count = allDays.filter(d => {
-        const day = d.getDay();
-        return day >= 1 && day <= 5;
-      }).length;
-
-      // Also check if any special kajian happened on weekends (e.g. Sabtu 19 Sept 2026)
-      const specialSessions = recordedSessionsList.filter(s => {
-        try {
-          const day = parseISO(s.date).getDay();
-          return day === 0 || day === 6;
-        } catch {
-          return false;
-        }
-      });
-      return count + specialSessions.length;
-    } catch {
-      return 0;
-    }
-  }, [startDateStr, endDateStr, recordedSessionsList]);
-
-  // Effective Total Sessions based on selected calculation basis
-  const totalSessions = useMemo(() => {
-    if (sessionBasis === 'recorded') {
-      return recordedSessionsList.length;
-    } else if (sessionBasis === 'scheduled') {
-      return scheduledSessionsCount;
+  // Total assessment units:
+  // If calculationRule === 'weekly_rule' -> total assessment unit is Total Pekan (weeksInPeriod.length)
+  // If calculationRule === 'daily_session' -> total assessment unit is recordedSessionsList.length
+  const totalAssessmentUnits = useMemo(() => {
+    if (calculationRule === 'weekly_rule') {
+      return weeksInPeriod.length;
     } else {
-      return Math.max(0, customSessionCount);
+      return recordedSessionsList.length;
     }
-  }, [sessionBasis, recordedSessionsList.length, scheduledSessionsCount, customSessionCount]);
+  }, [calculationRule, weeksInPeriod.length, recordedSessionsList.length]);
 
-  // Individual Recap Calculation
+  // Per-Individual Recap Calculation
   const civitasRecap = useMemo(() => {
     return civitasData.map(civitas => {
-      const attended = recordsInPeriod.filter(r => r.civitasId === civitas.id);
-      const attendedCount = attended.length;
-      const absentCount = Math.max(0, totalSessions - attendedCount);
-      const absenceRate = totalSessions > 0 ? (absentCount / totalSessions) * 100 : 0;
-      const attendanceRate = totalSessions > 0 ? (attendedCount / totalSessions) * 100 : 100;
+      const attendedAll = recordsInPeriod.filter(r => r.civitasId === civitas.id);
+      const physicalAttendedCount = attendedAll.length; // total presensi fisik
 
-      let category: 'perfect' | 'good' | 'warning' | 'critical' = 'good';
-      if (absentCount === 0 && totalSessions > 0) {
-        category = 'perfect';
-      } else if (absenceRate > 50 || attendedCount === 0) {
-        category = 'critical';
-      } else if (absenceRate > 25) {
-        category = 'warning';
+      if (calculationRule === 'weekly_rule') {
+        // ATURAN PEKANAN (MINIMAL 1X PER PEKAN):
+        // Jika civitas sudah hadir minimal 1x dalam pekan tersebut (Senin-Jum'at),
+        // maka hari lain tidak dihitung absen (terhitung hadir di pekan tersebut).
+        // Jika tidak hadir sama sekali dalam pekan tersebut, maka dihitung 1x ketidakhadiran per pekan.
+        const weeklyBreakdown = weeksInPeriod.map(week => {
+          const recordsInWeek = attendedAll.filter(r => 
+            r.date >= week.calendarWeekStartISO && r.date <= week.calendarWeekEndISO
+          );
+          const hasAttended = recordsInWeek.length >= 1;
+          return {
+            week,
+            hasAttended,
+            recordsInWeek
+          };
+        });
+
+        const attendedWeeksCount = weeklyBreakdown.filter(w => w.hasAttended).length;
+        const absentWeeksCount = Math.max(0, weeksInPeriod.length - attendedWeeksCount);
+        const absenceRate = weeksInPeriod.length > 0 ? (absentWeeksCount / weeksInPeriod.length) * 100 : 0;
+        const attendanceRate = weeksInPeriod.length > 0 ? (attendedWeeksCount / weeksInPeriod.length) * 100 : 100;
+
+        let category: 'perfect' | 'good' | 'warning' | 'critical' = 'good';
+        if (absentWeeksCount === 0 && weeksInPeriod.length > 0) {
+          category = 'perfect';
+        } else if (absentWeeksCount >= Math.ceil(weeksInPeriod.length / 2) || attendedWeeksCount === 0) {
+          category = 'critical';
+        } else if (absentWeeksCount > 0) {
+          category = 'warning';
+        }
+
+        return {
+          ...civitas,
+          totalUnits: weeksInPeriod.length,
+          attendedUnits: attendedWeeksCount,
+          absentUnits: absentWeeksCount,
+          physicalAttendedCount,
+          absenceRate,
+          attendanceRate,
+          category,
+          weeklyBreakdown,
+          records: attendedAll
+        };
+      } else {
+        // DAILY SESSION CALCULATION
+        const totalSessions = recordedSessionsList.length;
+        const absentCount = Math.max(0, totalSessions - physicalAttendedCount);
+        const absenceRate = totalSessions > 0 ? (absentCount / totalSessions) * 100 : 0;
+        const attendanceRate = totalSessions > 0 ? (physicalAttendedCount / totalSessions) * 100 : 100;
+
+        let category: 'perfect' | 'good' | 'warning' | 'critical' = 'good';
+        if (absentCount === 0 && totalSessions > 0) {
+          category = 'perfect';
+        } else if (absenceRate > 50 || physicalAttendedCount === 0) {
+          category = 'critical';
+        } else if (absenceRate > 25) {
+          category = 'warning';
+        }
+
+        return {
+          ...civitas,
+          totalUnits: totalSessions,
+          attendedUnits: physicalAttendedCount,
+          absentUnits: absentCount,
+          physicalAttendedCount,
+          absenceRate,
+          attendanceRate,
+          category,
+          weeklyBreakdown: [],
+          records: attendedAll
+        };
       }
-
-      return {
-        ...civitas,
-        attendedCount,
-        absentCount,
-        absenceRate,
-        attendanceRate,
-        category,
-        records: attended
-      };
     });
-  }, [civitasData, recordsInPeriod, totalSessions]);
+  }, [civitasData, recordsInPeriod, weeksInPeriod, calculationRule, recordedSessionsList.length]);
 
   // Filtered & Sorted Civitas List for display
   const displayedCivitas = useMemo(() => {
@@ -252,16 +344,16 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
     } else if (statusFilter === 'medium_absence') {
       result = result.filter(c => c.category === 'warning');
     } else if (statusFilter === 'perfect') {
-      result = result.filter(c => c.absentCount === 0);
+      result = result.filter(c => c.absentUnits === 0);
     }
 
     // Sorting
     return [...result].sort((a, b) => {
       let comp = 0;
       if (sortField === 'absent') {
-        comp = b.absentCount - a.absentCount;
+        comp = b.absentUnits - a.absentUnits;
       } else if (sortField === 'attended') {
-        comp = b.attendedCount - a.attendedCount;
+        comp = b.attendedUnits - a.attendedUnits;
       } else if (sortField === 'rate') {
         comp = b.absenceRate - a.absenceRate;
       } else if (sortField === 'name') {
@@ -278,39 +370,43 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
     const ikhwanList = civitasRecap.filter(c => c.gender === 'Ikhwan');
     const akhwatList = civitasRecap.filter(c => c.gender === 'Akhwat');
 
-    const totalPossibleSessionsAll = totalSessions * totalCivitas;
-    const totalAttendedAll = civitasRecap.reduce((acc, c) => acc + c.attendedCount, 0);
-    const totalAbsentAll = civitasRecap.reduce((acc, c) => acc + c.absentCount, 0);
-    const avgAbsentPerCivitas = totalCivitas > 0 ? (totalAbsentAll / totalCivitas).toFixed(1) : '0';
-    const overallAbsenceRate = totalPossibleSessionsAll > 0 
-      ? ((totalAbsentAll / totalPossibleSessionsAll) * 100).toFixed(1) 
+    const totalPossibleUnitsAll = totalAssessmentUnits * totalCivitas;
+    const totalAttendedUnitsAll = civitasRecap.reduce((acc, c) => acc + c.attendedUnits, 0);
+    const totalAbsentUnitsAll = civitasRecap.reduce((acc, c) => acc + c.absentUnits, 0);
+    const avgAbsentPerCivitas = totalCivitas > 0 ? (totalAbsentUnitsAll / totalCivitas).toFixed(1) : '0';
+    const overallAbsenceRate = totalPossibleUnitsAll > 0 
+      ? ((totalAbsentUnitsAll / totalPossibleUnitsAll) * 100).toFixed(1) 
       : '0';
 
+    // Total physical attendances across all civitas
+    const totalPhysicalPresensiAll = civitasRecap.reduce((acc, c) => acc + c.physicalAttendedCount, 0);
+
     // Ikhwan stats
-    const totalPossibleIkhwan = totalSessions * ikhwanList.length;
-    const totalAbsentIkhwan = ikhwanList.reduce((acc, c) => acc + c.absentCount, 0);
+    const totalPossibleIkhwan = totalAssessmentUnits * ikhwanList.length;
+    const totalAbsentIkhwan = ikhwanList.reduce((acc, c) => acc + c.absentUnits, 0);
     const ikhwanAbsenceRate = totalPossibleIkhwan > 0 
       ? ((totalAbsentIkhwan / totalPossibleIkhwan) * 100).toFixed(1) 
       : '0';
 
     // Akhwat stats
-    const totalPossibleAkhwat = totalSessions * akhwatList.length;
-    const totalAbsentAkhwat = akhwatList.reduce((acc, c) => acc + c.absentCount, 0);
+    const totalPossibleAkhwat = totalAssessmentUnits * akhwatList.length;
+    const totalAbsentAkhwat = akhwatList.reduce((acc, c) => acc + c.absentUnits, 0);
     const akhwatAbsenceRate = totalPossibleAkhwat > 0 
       ? ((totalAbsentAkhwat / totalPossibleAkhwat) * 100).toFixed(1) 
       : '0';
 
-    // Civitas counts by attendance status
-    const perfectCount = civitasRecap.filter(c => c.absentCount === 0 && totalSessions > 0).length;
+    // Civitas counts by status
+    const perfectCount = civitasRecap.filter(c => c.absentUnits === 0 && totalAssessmentUnits > 0).length;
     const highAbsenceCount = civitasRecap.filter(c => c.category === 'critical').length;
-    const zeroAttendanceCount = civitasRecap.filter(c => c.attendedCount === 0).length;
+    const zeroAttendanceCount = civitasRecap.filter(c => c.attendedUnits === 0).length;
 
     return {
       totalCivitas,
-      totalSessions,
-      totalPossibleSessionsAll,
-      totalAttendedAll,
-      totalAbsentAll,
+      totalAssessmentUnits,
+      totalPossibleUnitsAll,
+      totalAttendedUnitsAll,
+      totalAbsentUnitsAll,
+      totalPhysicalPresensiAll,
       avgAbsentPerCivitas,
       overallAbsenceRate,
       totalAbsentIkhwan,
@@ -323,113 +419,116 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
       ikhwanCount: ikhwanList.length,
       akhwatCount: akhwatList.length
     };
-  }, [civitasRecap, totalSessions]);
+  }, [civitasRecap, totalAssessmentUnits]);
 
   // Export to PDF
   const downloadPDFReport = () => {
     const doc = new jsPDF();
 
     // Title & Header
-    doc.setFontSize(16);
-    doc.setTextColor(15, 23, 42); // slate-900
+    doc.setFontSize(15);
+    doc.setTextColor(15, 23, 42);
     doc.text('LAPORAN REKAP KETIDAKHADIRAN KAJIAN CIVITAS', 14, 18);
     
-    doc.setFontSize(11);
-    doc.setTextColor(71, 85, 105); // slate-600
-    doc.text('Pondok Pesantren Al-Madina Yogyakarta', 14, 25);
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Pondok Pesantren Al-Madina Yogyakarta', 14, 24);
     
-    // Period & calculation basis info
     const formattedStart = format(parseISO(startDateStr), 'dd MMMM yyyy', { locale: id });
     const formattedEnd = format(parseISO(endDateStr), 'dd MMMM yyyy', { locale: id });
-    doc.text(`Periode: ${formattedStart} s/d ${formattedEnd}`, 14, 32);
-    doc.text(`Total Sesi Kajian: ${totalSessions} sesi | Basis: ${
-      sessionBasis === 'recorded' ? 'Sesi Terlaksana' : sessionBasis === 'scheduled' ? 'Jadwal Kalender' : 'Kustom'
-    }`, 14, 38);
+    doc.text(`Periode: ${formattedStart} s/d ${formattedEnd} (${weeksInPeriod.length} Pekan Kajian)`, 14, 30);
+    
+    doc.setFontSize(8.5);
+    doc.setTextColor(4, 120, 87);
+    doc.text('Kebijakan: Hadir minimal 1x per pekan (Senin-Jum\'at) = Terhitung hadir penuh sepekan (tidak dihitung absen).', 14, 36);
 
     // Summary Box
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(14, 43, 182, 24, 2, 2, 'FD');
+    doc.roundedRect(14, 40, 182, 24, 2, 2, 'FD');
 
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(`Total Civitas: ${overallStats.totalCivitas} orang (${overallStats.ikhwanCount} Ikhwan, ${overallStats.akhwatCount} Akhwat)`, 18, 50);
-    doc.text(`Total Ketidakhadiran Seluruh Civitas: ${overallStats.totalAbsentAll} kali (Rata-rata: ${overallStats.avgAbsentPerCivitas}x / orang)`, 18, 56);
-    doc.text(`Tingkat Ketidakhadiran Kolektif: ${overallStats.overallAbsenceRate}% (Ikhwan: ${overallStats.ikhwanAbsenceRate}%, Akhwat: ${overallStats.akhwatAbsenceRate}%)`, 18, 62);
+    doc.text(`Total Civitas: ${overallStats.totalCivitas} orang (${overallStats.ikhwanCount} Ikhwan, ${overallStats.akhwatCount} Akhwat) | Total Pekan: ${overallStats.totalAssessmentUnits} Pekan`, 18, 47);
+    doc.text(`Total Ketidakhadiran Seluruh Civitas: ${overallStats.totalAbsentUnitsAll} pekan absen (Rata-rata: ${overallStats.avgAbsentPerCivitas} pekan / orang)`, 18, 53);
+    doc.text(`Tingkat Ketidakhadiran: ${overallStats.overallAbsenceRate}% (Ikhwan: ${overallStats.ikhwanAbsenceRate}%, Akhwat: ${overallStats.akhwatAbsenceRate}%) | Hadir Penuh: ${overallStats.perfectCount} orang`, 18, 59);
 
     // Table 1: Ikhwan
-    doc.setFontSize(12);
-    doc.setTextColor(4, 120, 87); // emerald-700
-    doc.text('Rekap Ketidakhadiran Civitas Ikhwan', 14, 76);
+    doc.setFontSize(11);
+    doc.setTextColor(4, 120, 87);
+    doc.text('Rekap Ketidakhadiran Civitas Ikhwan', 14, 72);
 
     const ikhwanRows = civitasRecap
       .filter(c => c.gender === 'Ikhwan')
-      .sort((a, b) => b.absentCount - a.absentCount)
+      .sort((a, b) => b.absentUnits - a.absentUnits)
       .map((c, index) => [
         (index + 1).toString(),
         c.name,
-        `${c.attendedCount}x`,
-        `${c.absentCount}x`,
+        `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+        c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+        `${c.physicalAttendedCount}x`,
         `${c.absenceRate.toFixed(0)}%`,
-        c.absentCount === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : c.category === 'warning' ? 'Perlu Perhatian' : 'Cukup'
+        c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
       ]);
 
     autoTable(doc, {
-      startY: 80,
-      head: [['No', 'Nama Civitas', 'Hadir', 'Tidak Hadir', '% Absen', 'Evaluasi']],
+      startY: 76,
+      head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
       body: ikhwanRows,
       theme: 'grid',
       headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
       styles: { fontSize: 8, cellPadding: 2 },
       columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
-        4: { cellWidth: 20, halign: 'center' },
-        5: { cellWidth: 35 }
+        0: { cellWidth: 8, halign: 'center' },
+        2: { cellWidth: 26, halign: 'center' },
+        3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 24, halign: 'center' },
+        5: { cellWidth: 16, halign: 'center' },
+        6: { cellWidth: 32 }
       }
     });
 
     // Table 2: Akhwat
     const lastY = (doc as any).lastAutoTable.finalY || 160;
     
-    // Check if need new page
     if (lastY > 210) {
       doc.addPage();
-      doc.setFontSize(12);
+      doc.setFontSize(11);
       doc.setTextColor(4, 120, 87);
       doc.text('Rekap Ketidakhadiran Civitas Akhwat', 14, 20);
     } else {
-      doc.setFontSize(12);
+      doc.setFontSize(11);
       doc.setTextColor(4, 120, 87);
       doc.text('Rekap Ketidakhadiran Civitas Akhwat', 14, lastY + 12);
     }
 
     const akhwatRows = civitasRecap
       .filter(c => c.gender === 'Akhwat')
-      .sort((a, b) => b.absentCount - a.absentCount)
+      .sort((a, b) => b.absentUnits - a.absentUnits)
       .map((c, index) => [
         (index + 1).toString(),
         c.name,
-        `${c.attendedCount}x`,
-        `${c.absentCount}x`,
+        `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+        c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+        `${c.physicalAttendedCount}x`,
         `${c.absenceRate.toFixed(0)}%`,
-        c.absentCount === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : c.category === 'warning' ? 'Perlu Perhatian' : 'Cukup'
+        c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
       ]);
 
     autoTable(doc, {
       startY: lastY > 210 ? 25 : lastY + 16,
-      head: [['No', 'Nama Civitas', 'Hadir', 'Tidak Hadir', '% Absen', 'Evaluasi']],
+      head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
       body: akhwatRows,
       theme: 'grid',
       headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
       styles: { fontSize: 8, cellPadding: 2 },
       columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
-        4: { cellWidth: 20, halign: 'center' },
-        5: { cellWidth: 35 }
+        0: { cellWidth: 8, halign: 'center' },
+        2: { cellWidth: 26, halign: 'center' },
+        3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 24, halign: 'center' },
+        5: { cellWidth: 16, halign: 'center' },
+        6: { cellWidth: 32 }
       }
     });
 
@@ -438,18 +537,30 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
 
   // Export to CSV
   const downloadCSVReport = () => {
-    const headers = ['No', 'Nama Civitas', 'Gender', 'Total Sesi Kajian', 'Jumlah Hadir', 'Jumlah Tidak Hadir', 'Persentase Ketidakhadiran (%)', 'Status Evaluasi'];
+    const headers = [
+      'No', 
+      'Nama Civitas', 
+      'Gender', 
+      'Total Pekan Kajian', 
+      'Pekan Terpenuhi (Hadir Min 1x)', 
+      'Total Ketidakhadiran (Pekan Absen)', 
+      'Total Kehadiran Fisik',
+      'Persentase Ketidakhadiran (%)', 
+      'Status Evaluasi'
+    ];
+    
     const rows = civitasRecap
-      .sort((a, b) => b.absentCount - a.absentCount)
+      .sort((a, b) => b.absentUnits - a.absentUnits)
       .map((c, i) => [
         i + 1,
         `"${c.name}"`,
         c.gender,
-        totalSessions,
-        c.attendedCount,
-        c.absentCount,
+        overallStats.totalAssessmentUnits,
+        c.attendedUnits,
+        c.absentUnits,
+        c.physicalAttendedCount,
         c.absenceRate.toFixed(1),
-        `"${c.absentCount === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : c.category === 'warning' ? 'Perlu Perhatian' : 'Cukup'}"`
+        `"${c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'}"`
       ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' 
@@ -467,7 +578,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
   return (
     <div className="space-y-6">
       
-      {/* 1. Header Kontrol Tanggal & Periode */}
+      {/* 1. Header & Penjelasan Kebijakan Aturan Pekanan */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -475,10 +586,10 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               <span className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
                 <CalendarRange size={20} />
               </span>
-              <h2 className="text-lg font-bold text-slate-800">Filter Periode & Tanggal Rekap</h2>
+              <h2 className="text-lg font-bold text-slate-800">Rekap Ketidakhadiran Kajian Civitas</h2>
             </div>
             <p className="text-sm text-slate-500 mt-1">
-              Hitung rekap ketidakhadiran berdasarkan pilihan cepat atau tentukan rentang tanggal kustom sesuai kebutuhan.
+              Perhitungan ketidakhadiran berbasis tanggal kustom sesuai aturan kehadiran minimal sepekan.
             </p>
           </div>
 
@@ -502,11 +613,26 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
           </div>
         </div>
 
+        {/* Kotak Info Aturan Kebijakan Pekanan */}
+        <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-start gap-3 text-xs text-emerald-900 leading-relaxed">
+          <BadgeInfo className="text-emerald-700 shrink-0 mt-0.5" size={18} />
+          <div>
+            <h4 className="font-bold text-emerald-950 text-sm">Ketentuan Perhitungan Kehadiran Kajian Pekanan (Senin–Jum'at):</h4>
+            <p className="mt-1 text-emerald-800">
+              • <strong>Hadir $\ge$ 1 kali sepekan:</strong> Civitas sudah memenuhi kewajiban hadir kajian pekan tersebut. Hari lain pada pekan tersebut <strong>tidak dihitung absen</strong> (terhitung hadir).
+            </p>
+            <p className="mt-0.5 text-emerald-800">
+              • <strong>Tidak hadir sama sekali sepekan:</strong> Jika civitas tidak mengisi presensi minimal satu kali dalam satu pekan kajian, maka dihitung <strong>1 kali ketidakhadiran per pekan</strong>.
+            </p>
+          </div>
+        </div>
+
         {/* Pilihan Preset Cepat */}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
           <span className="text-xs font-semibold text-slate-500 self-center mr-1">Preset:</span>
           {(
             [
+              { key: 'contoh_user', label: '31 Ags - 04 Okt 2026 (5 Pekan)' },
               { key: 'this_month', label: 'Bulan Ini' },
               { key: 'last_month', label: 'Bulan Lalu' },
               { key: 'this_week', label: 'Pekan Ini' },
@@ -522,7 +648,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
                 periodPreset === p.key
-                  ? "bg-emerald-700 text-white shadow-sm"
+                  ? "bg-emerald-700 text-white shadow-sm font-semibold"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               )}
             >
@@ -532,7 +658,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
         </div>
 
         {/* Input Tanggal Mulai dan Selesai (Custom) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-1">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
               Tanggal Mulai (Dari)
@@ -564,50 +690,32 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center justify-between">
-              <span>Dasar Perhitungan Sesi</span>
-              <span className="text-[10px] text-slate-400 font-normal">Fleksibel</span>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              Metode Perhitungan Ketidakhadiran
             </label>
             <select
-              value={sessionBasis}
-              onChange={(e) => setSessionBasis(e.target.value as SessionBasis)}
+              value={calculationRule}
+              onChange={(e) => setCalculationRule(e.target.value as CalculationRule)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none transition"
             >
-              <option value="recorded">Sesi Terlaksana ({recordedSessionsList.length} sesi)</option>
-              <option value="scheduled">Jadwal Kalender Senin–Jum'at ({scheduledSessionsCount} sesi)</option>
-              <option value="custom">Kustom / Manual ({customSessionCount} sesi)</option>
+              <option value="weekly_rule">Aturan Pekanan (Min. 1x / Pekan = Hadir Penuh)</option>
+              <option value="daily_session">Hitung Per-Sesi Kajian Harian</option>
             </select>
           </div>
         </div>
-
-        {/* Info bar dasar sesi jika custom */}
-        {sessionBasis === 'custom' && (
-          <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-            <Info size={16} className="shrink-0 text-amber-600" />
-            <div className="flex-1 flex items-center gap-2 flex-wrap">
-              <span>Tentukan jumlah total sesi kajian yang diharapkan pada rentang ini:</span>
-              <input
-                type="number"
-                min="1"
-                max="365"
-                value={customSessionCount}
-                onChange={(e) => setCustomSessionCount(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-20 px-2 py-1 bg-white border border-amber-300 rounded-md font-bold text-center"
-              />
-              <span>sesi.</span>
-            </div>
-          </div>
-        )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 pt-1">
           <div className="flex items-center gap-1.5">
             <Clock size={14} className="text-slate-400" />
             <span>
-              Periode Aktif: <strong>{format(parseISO(startDateStr), 'dd MMM yyyy', { locale: id })}</strong> s/d <strong>{format(parseISO(endDateStr), 'dd MMM yyyy', { locale: id })}</strong>
+              Periode: <strong>{format(parseISO(startDateStr), 'dd MMM yyyy', { locale: id })}</strong> s/d <strong>{format(parseISO(endDateStr), 'dd MMM yyyy', { locale: id })}</strong>
             </span>
           </div>
           <div>
-            Total Sesi Kajian Dihitung: <strong className="text-slate-800 font-bold">{totalSessions} Sesi</strong>
+            Total Periode: <strong className="text-emerald-800 font-bold">{weeksInPeriod.length} Pekan Kajian</strong>
+            {calculationRule === 'weekly_rule' && (
+              <span className="text-slate-500 ml-1.5">({weeksInPeriod.length} target kehadiran pekanan)</span>
+            )}
           </div>
         </div>
       </div>
@@ -620,10 +728,13 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">Total Ketidakhadiran</p>
               <h3 className="text-3xl font-extrabold text-slate-800 mt-2">
-                {overallStats.totalAbsentAll} <span className="text-sm font-normal text-slate-500">kali</span>
+                {overallStats.totalAbsentUnitsAll}{' '}
+                <span className="text-sm font-normal text-slate-500">
+                  {calculationRule === 'weekly_rule' ? 'pekan absen' : 'kali absen'}
+                </span>
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Seluruh <strong>{overallStats.totalCivitas}</strong> civitas (Rata-rata {overallStats.avgAbsentPerCivitas}x/orang)
+                Seluruh <strong>{overallStats.totalCivitas}</strong> civitas (Rata-rata {overallStats.avgAbsentPerCivitas} pekan/orang)
               </p>
             </div>
             <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
@@ -631,8 +742,8 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-            <span>Ikhwan: <strong>{overallStats.totalAbsentIkhwan}x</strong></span>
-            <span>Akhwat: <strong>{overallStats.totalAbsentAkhwat}x</strong></span>
+            <span>Ikhwan: <strong>{overallStats.totalAbsentIkhwan} pekan</strong></span>
+            <span>Akhwat: <strong>{overallStats.totalAbsentAkhwat} pekan</strong></span>
           </div>
         </div>
 
@@ -645,7 +756,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                 {overallStats.overallAbsenceRate}%
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Dari total {overallStats.totalPossibleSessionsAll} potensi presensi
+                Dari {overallStats.totalPossibleUnitsAll} potensi {calculationRule === 'weekly_rule' ? 'pekan' : 'presensi'} seluruh civitas
               </p>
             </div>
             <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
@@ -657,7 +768,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               <div 
                 className="bg-emerald-500 h-full" 
                 style={{ width: `${Math.max(0, 100 - parseFloat(overallStats.overallAbsenceRate))}%` }} 
-                title={`Hadir: ${(100 - parseFloat(overallStats.overallAbsenceRate)).toFixed(1)}%`}
+                title={`Terpenuhi: ${(100 - parseFloat(overallStats.overallAbsenceRate)).toFixed(1)}%`}
               />
               <div 
                 className="bg-rose-500 h-full" 
@@ -666,22 +777,22 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               />
             </div>
             <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-              <span>Hadir: {overallStats.totalAttendedAll}</span>
-              <span>Absen: {overallStats.totalAbsentAll}</span>
+              <span>Hadir: {overallStats.totalAttendedUnitsAll} pekan</span>
+              <span>Absen: {overallStats.totalAbsentUnitsAll} pekan</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Civitas Hadir Penuh (Rajin) */}
+        {/* Card 3: Civitas Hadir Penuh (Nol Absen) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Hadir Penuh (Nol Absen)</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Hadir Penuh (0x Absen)</p>
               <h3 className="text-3xl font-extrabold text-slate-800 mt-2">
                 {overallStats.perfectCount} <span className="text-sm font-normal text-slate-500">orang</span>
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                {((overallStats.perfectCount / overallStats.totalCivitas) * 100).toFixed(0)}% dari seluruh civitas
+                {((overallStats.perfectCount / overallStats.totalCivitas) * 100).toFixed(0)}% civitas hadir setiap pekan
               </p>
             </div>
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -689,7 +800,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-emerald-700 font-medium">
-            Memenuhi seluruh {totalSessions} sesi kajian
+            Memenuhi minimal 1x hadir di seluruh {overallStats.totalAssessmentUnits} pekan kajian
           </div>
         </div>
 
@@ -697,12 +808,12 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">Perlu Perhatian Khusus</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-rose-600">Perlu Perhatian</p>
               <h3 className="text-3xl font-extrabold text-slate-800 mt-2">
                 {overallStats.highAbsenceCount} <span className="text-sm font-normal text-slate-500">orang</span>
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Absen &gt; 50% atau sama sekali belum hadir
+                Absen &ge; 50% dari total pekan kajian
               </p>
             </div>
             <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
@@ -723,13 +834,13 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <span>Daftar Ketidakhadiran Per-Individu</span>
+                <span>Daftar Rekap Ketidakhadiran Per-Individu</span>
                 <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
                   {displayedCivitas.length} Civitas
                 </span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Urutan teratas menunjukkan civitas dengan jumlah ketidakhadiran terbanyak.
+                Civitas dengan ketidakhadiran terbanyak diprioritaskan di baris teratas.
               </p>
             </div>
 
@@ -758,7 +869,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
               <input
                 type="text"
-                placeholder="Cari nama civitas..."
+                placeholder="Cari nama civitas (cth: Anggara Pratodi, Alvin, dll)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
@@ -780,8 +891,8 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
             >
               <option value="all">Semua Status Evaluasi</option>
-              <option value="high_absence">Perlu Perhatian (Absen Tinggi)</option>
-              <option value="medium_absence">Perlu Perhatian Sedang</option>
+              <option value="high_absence">Perlu Pembinaan (Absen Tinggi)</option>
+              <option value="medium_absence">Perlu Perhatian</option>
               <option value="perfect">Hadir Penuh (0 Absen)</option>
             </select>
 
@@ -812,8 +923,11 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                 <th className="px-5 py-3.5 text-center w-12">No</th>
                 <th className="px-5 py-3.5">Nama Civitas</th>
                 <th className="px-5 py-3.5 text-center">Kategori</th>
-                <th className="px-5 py-3.5 text-center">Kehadiran</th>
+                <th className="px-5 py-3.5 text-center">
+                  {calculationRule === 'weekly_rule' ? 'Pekan Hadir (Min 1x)' : 'Kehadiran'}
+                </th>
                 <th className="px-5 py-3.5 text-center">Total Ketidakhadiran</th>
+                <th className="px-5 py-3.5 text-center">Rincian Pekan</th>
                 <th className="px-5 py-3.5 text-center">% Ketidakhadiran</th>
                 <th className="px-5 py-3.5 text-center">Status Evaluasi</th>
                 <th className="px-5 py-3.5 text-right">Aksi</th>
@@ -822,7 +936,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
             <tbody className="divide-y divide-slate-100 text-sm">
               {displayedCivitas.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
                     Tidak ditemukan data civitas yang sesuai dengan filter pencarian.
                   </td>
                 </tr>
@@ -835,7 +949,9 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                       </td>
                       <td className="px-5 py-4">
                         <div className="font-semibold text-slate-800">{civitas.name}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">ID: {civitas.id}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          Presensi Fisik: <strong>{civitas.physicalAttendedCount} kali</strong>
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span className={cn(
@@ -849,22 +965,54 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 text-xs">
-                          <CheckCircle2 size={13} />
-                          {civitas.attendedCount} / {totalSessions}
+                          <CalendarCheck size={13} />
+                          {civitas.attendedUnits} / {civitas.totalUnits} {calculationRule === 'weekly_rule' ? 'Pekan' : 'Sesi'}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span className={cn(
                           "inline-flex items-center gap-1 font-bold px-3 py-1 rounded-xl text-xs",
-                          civitas.absentCount === 0 
-                            ? "bg-slate-100 text-slate-600"
+                          civitas.absentUnits === 0 
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : civitas.category === 'critical'
                             ? "bg-rose-100 text-rose-800 border border-rose-200"
                             : "bg-amber-100 text-amber-800 border border-amber-200"
                         )}>
-                          {civitas.absentCount > 0 && <UserX size={13} />}
-                          {civitas.absentCount}x Tidak Hadir
+                          {civitas.absentUnits > 0 ? (
+                            <>
+                              <UserX size={13} />
+                              {civitas.absentUnits}x Tidak Hadir
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 size={13} />
+                              0x (Nol Absen)
+                            </>
+                          )}
                         </span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        {/* Tracker Rincian Pekan */}
+                        {calculationRule === 'weekly_rule' && civitas.weeklyBreakdown.length > 0 ? (
+                          <div className="inline-flex items-center gap-1">
+                            {civitas.weeklyBreakdown.map((wb) => (
+                              <span
+                                key={wb.week.weekNumber}
+                                title={`${wb.week.label} (${wb.week.dateRangeLabel}): ${wb.hasAttended ? 'Hadir (' + wb.recordsInWeek.length + 'x)' : 'Tidak Hadir'}`}
+                                className={cn(
+                                  "w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold border transition-transform hover:scale-110",
+                                  wb.hasAttended
+                                    ? "bg-emerald-500 text-white border-emerald-600"
+                                    : "bg-rose-100 text-rose-700 border-rose-300"
+                                )}
+                              >
+                                {wb.hasAttended ? <Check size={12} /> : <X size={12} />}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="px-5 py-4 text-center">
                         <div className="inline-flex flex-col items-center">
@@ -875,7 +1023,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                             <div 
                               className={cn(
                                 "h-full rounded-full",
-                                civitas.absentCount === 0 
+                                civitas.absentUnits === 0 
                                   ? "bg-emerald-500" 
                                   : civitas.category === 'critical' 
                                   ? "bg-rose-500" 
@@ -887,7 +1035,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                         </div>
                       </td>
                       <td className="px-5 py-4 text-center">
-                        {civitas.absentCount === 0 ? (
+                        {civitas.absentUnits === 0 ? (
                           <span className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                             Hadir Penuh
                           </span>
@@ -906,10 +1054,12 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                           onClick={() => setSelectedCivitasDetail({
                             civitas,
                             attendedRecords: civitas.records,
-                            attendedCount: civitas.attendedCount,
-                            absentCount: civitas.absentCount,
-                            totalSessions,
-                            absenceRate: civitas.absenceRate
+                            attendedCount: civitas.physicalAttendedCount,
+                            absentCount: civitas.absentUnits,
+                            totalWeeks: civitas.totalUnits,
+                            attendedWeeks: civitas.attendedUnits,
+                            absenceRate: civitas.absenceRate,
+                            weeklyBreakdown: civitas.weeklyBreakdown
                           })}
                           className="px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-300 rounded-lg transition-colors"
                         >
@@ -925,7 +1075,7 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
         </div>
       </div>
 
-      {/* 4. Modal Detail Presensi & Ketidakhadiran Civitas */}
+      {/* 4. Modal Detail Presensi & Rincian Tiap Pekan */}
       {selectedCivitasDetail && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -946,23 +1096,81 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
               {/* Stat box per-individu */}
               <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
                 <div>
-                  <span className="block text-[11px] text-slate-500 font-medium">Total Sesi</span>
-                  <span className="block text-lg font-bold text-slate-800">{selectedCivitasDetail.totalSessions}</span>
+                  <span className="block text-[11px] text-slate-500 font-medium">Total Pekan</span>
+                  <span className="block text-lg font-bold text-slate-800">{selectedCivitasDetail.totalWeeks} Pekan</span>
                 </div>
                 <div>
-                  <span className="block text-[11px] text-emerald-600 font-medium">Hadir</span>
-                  <span className="block text-lg font-bold text-emerald-700">{selectedCivitasDetail.attendedCount}x</span>
+                  <span className="block text-[11px] text-emerald-600 font-medium">Pekan Terpenuhi</span>
+                  <span className="block text-lg font-bold text-emerald-700">{selectedCivitasDetail.attendedWeeks} Pekan</span>
                 </div>
                 <div>
-                  <span className="block text-[11px] text-rose-600 font-medium">Tidak Hadir</span>
-                  <span className="block text-lg font-bold text-rose-700">{selectedCivitasDetail.absentCount}x</span>
+                  <span className="block text-[11px] text-rose-600 font-medium">Pekan Absen</span>
+                  <span className="block text-lg font-bold text-rose-700">{selectedCivitasDetail.absentCount} Pekan</span>
                 </div>
               </div>
 
+              {/* Rincian Pekan per Pekan */}
+              {selectedCivitasDetail.weeklyBreakdown.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+                    <CalendarCheck size={14} className="text-emerald-600" />
+                    Status Kehadiran per Pekan Kajian
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedCivitasDetail.weeklyBreakdown.map((wb) => (
+                      <div 
+                        key={wb.week.weekNumber} 
+                        className={cn(
+                          "p-3 rounded-xl border flex items-center justify-between text-xs transition-colors",
+                          wb.hasAttended
+                            ? "bg-emerald-50/50 border-emerald-200"
+                            : "bg-rose-50/50 border-rose-200"
+                        )}
+                      >
+                        <div>
+                          <div className="font-semibold text-slate-800">
+                            {wb.week.label} ({wb.week.dateRangeLabel})
+                          </div>
+                          <div className="text-slate-500 mt-0.5">
+                            {wb.hasAttended ? (
+                              <span className="text-emerald-700 font-medium">
+                                Hadir {wb.recordsInWeek.length}x pada pekan ini (hari lain tidak dihitung absen)
+                              </span>
+                            ) : (
+                              <span className="text-rose-600 font-medium">
+                                Tidak ada catatan presensi pada pekan ini (Dihitung 1x absen)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <span className={cn(
+                          "px-2.5 py-1 rounded-full font-bold text-[11px] flex items-center gap-1 shrink-0",
+                          wb.hasAttended
+                            ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                            : "bg-rose-100 text-rose-800 border border-rose-200"
+                        )}>
+                          {wb.hasAttended ? (
+                            <>
+                              <Check size={12} /> Terpenuhi
+                            </>
+                          ) : (
+                            <>
+                              <X size={12} /> Tidak Hadir
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sesi Kajian yang Dihadiri */}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
                   <BookOpen size={14} className="text-emerald-600" />
-                  Kajian yang Dihadiri ({selectedCivitasDetail.attendedRecords.length})
+                  Presensi Fisik yang Tercatat ({selectedCivitasDetail.attendedRecords.length})
                 </h4>
                 
                 {selectedCivitasDetail.attendedRecords.length === 0 ? (
@@ -970,11 +1178,11 @@ export default function RekapKetidakhadiran({ records, onOpenEditCivitas }: Reka
                     Civitas ini <strong>belum pernah hadir</strong> pada sesi kajian mana pun dalam rentang periode ini.
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {selectedCivitasDetail.attendedRecords.map((r, i) => {
                       const schedule = schedules.find(s => s.id === r.scheduleId);
                       return (
-                        <div key={r.id || i} className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                        <div key={r.id || i} className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
                           <div>
                             <div className="font-semibold text-slate-800">
                               {format(parseISO(r.date), 'EEEE, dd MMMM yyyy', { locale: id })}
