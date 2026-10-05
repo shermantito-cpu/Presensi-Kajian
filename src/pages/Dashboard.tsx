@@ -119,30 +119,35 @@ export default function Dashboard() {
     const doc = new jsPDF();
     
     doc.setFontSize(16);
-    doc.text('Laporan Presensi Kajian', 14, 20);
-    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Laporan Presensi Kajian', 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Pondok Pesantren Al-Madina Al-Islami Prabumulih', 14, 24);
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
     
     if (viewMode === 'weekly') {
-      doc.text(`Pekan ke-${getCustomWeekNumber(targetWeekDate)} (${format(weekStart, 'dd MMM yyyy', { locale: id })} - ${format(weekEnd, 'dd MMM yyyy', { locale: id })})`, 14, 28);
+      doc.text(`Pekan ke-${getCustomWeekNumber(targetWeekDate)} (${format(weekStart, 'dd MMM yyyy', { locale: id })} - ${format(weekEnd, 'dd MMM yyyy', { locale: id })})`, 14, 30);
     } else if (viewMode === 'monthly') {
-      doc.text(`Bulan ${format(monthStart, 'MMMM yyyy', { locale: id })}`, 14, 28);
+      doc.text(`Bulan ${format(monthStart, 'MMMM yyyy', { locale: id })}`, 14, 30);
     } else if (viewMode === 'khusus') {
-      doc.text(`Kajian Khusus: Sabtu, 19 September 2026`, 14, 28);
+      doc.text(`Kajian Khusus: Sabtu, 19 September 2026`, 14, 30);
     } else {
-      doc.text(`Periode: ${format(new Date(customStartDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(customEndDate), 'dd MMM yyyy', { locale: id })}`, 14, 28);
+      doc.text(`Periode: ${format(new Date(customStartDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(customEndDate), 'dd MMM yyyy', { locale: id })}`, 14, 30);
     }
     
     const headerTitle = `Status (Min ${minRequirement}x)`;
 
     // Ikhwan Table
-    doc.text('Kajian Ikhwan', 14, 38);
+    doc.text('Kajian Ikhwan', 14, 40);
     const ikhwanRecap = civitasData.filter(c => c.gender === 'Ikhwan').map(c => {
       const count = filteredRecords.filter(r => r.civitasId === c.id).length;
       return [c.name, count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
     });
 
     autoTable(doc, {
-      startY: 42,
+      startY: 44,
       head: [['Nama Civitas', 'Jml Kehadiran', headerTitle]],
       body: ikhwanRecap,
       theme: 'grid',

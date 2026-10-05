@@ -432,7 +432,7 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
     
     doc.setFontSize(10);
     doc.setTextColor(71, 85, 105);
-    doc.text('Pondok Pesantren Al-Madina Yogyakarta', 14, 24);
+    doc.text('Pondok Pesantren Al-Madina Al-Islami Prabumulih', 14, 24);
     
     const formattedStart = format(parseISO(startDateStr), 'dd MMMM yyyy', { locale: id });
     const formattedEnd = format(parseISO(endDateStr), 'dd MMMM yyyy', { locale: id });
