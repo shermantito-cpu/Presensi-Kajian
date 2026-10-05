@@ -143,12 +143,12 @@ export default function Dashboard() {
     doc.text('Kajian Ikhwan', 14, 40);
     const ikhwanRecap = civitasData.filter(c => c.gender === 'Ikhwan').map(c => {
       const count = filteredRecords.filter(r => r.civitasId === c.id).length;
-      return [c.name, count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
+      return [c.name, c.employeeType === 'Bagian Umum' ? 'Bagian Umum' : 'Pendidik & PTK', count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
     });
 
     autoTable(doc, {
       startY: 44,
-      head: [['Nama Civitas', 'Jml Kehadiran', headerTitle]],
+      head: [['Nama Civitas', 'Jenis Pegawai', 'Jml Kehadiran', headerTitle]],
       body: ikhwanRecap,
       theme: 'grid',
       headStyles: { fillColor: [4, 120, 87] } // emerald-700
@@ -158,12 +158,12 @@ export default function Dashboard() {
     doc.text('Kajian Akhwat', 14, (doc as any).lastAutoTable.finalY + 14);
     const akhwatRecap = civitasData.filter(c => c.gender === 'Akhwat').map(c => {
       const count = filteredRecords.filter(r => r.civitasId === c.id).length;
-      return [c.name, count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
+      return [c.name, c.employeeType === 'Bagian Umum' ? 'Bagian Umum' : 'Pendidik & PTK', count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
     });
 
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 18,
-      head: [['Nama Civitas', 'Jml Kehadiran', headerTitle]],
+      head: [['Nama Civitas', 'Jenis Pegawai', 'Jml Kehadiran', headerTitle]],
       body: akhwatRecap,
       theme: 'grid',
       headStyles: { fillColor: [4, 120, 87] }
@@ -504,7 +504,19 @@ export default function Dashboard() {
                   <tbody className="divide-y divide-slate-100">
                     {recap.map(r => (
                       <tr key={r.id} className="hover:bg-slate-50/50">
-                        <td className="px-6 py-4 font-medium text-slate-800">{r.name}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-slate-800">{r.name}</span>
+                            <span className={cn(
+                              "px-2 py-0.5 rounded text-[10px] font-semibold border",
+                              r.employeeType === 'Bagian Umum'
+                                ? "bg-amber-50 text-amber-800 border-amber-200"
+                                : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                            )}>
+                              {r.employeeType === 'Bagian Umum' ? 'Bagian Umum' : 'Pendidik & PTK'}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-6 py-4 text-center">
                           <span className={cn(
                             "inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium",

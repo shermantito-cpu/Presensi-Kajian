@@ -25,11 +25,16 @@ import {
   CalendarCheck,
   Check,
   X,
-  BadgeInfo
+  BadgeInfo,
+  Briefcase,
+  GraduationCap,
+  ChevronDown,
+  Layers,
+  Users
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { civitasData, Gender, Civitas } from '../data/civitas';
+import { civitasData, Gender, Civitas, EmployeeType } from '../data/civitas';
 import { schedules } from '../data/schedules';
 import { AttendanceRecord } from '../types';
 import { cn } from '../lib/utils';
@@ -65,10 +70,15 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
 
   // Filters & Sorting state
   const [selectedGender, setSelectedGender] = useState<'All' | Gender>('All');
+  const [selectedEmployeeType, setSelectedEmployeeType] = useState<'All' | EmployeeType>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<'absent' | 'attended' | 'name' | 'rate'>('absent');
   const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
   const [statusFilter, setStatusFilter] = useState<'all' | 'high_absence' | 'medium_absence' | 'perfect'>('all');
+
+  // Dropdown states for download actions
+  const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
+  const [csvMenuOpen, setCsvMenuOpen] = useState(false);
 
   // Modal detail civitas
   const [selectedCivitasDetail, setSelectedCivitasDetail] = useState<{
@@ -135,38 +145,38 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
         break;
       }
       case 'all_time': {
-        let minDate = '2026-07-01';
+        let earliest = '2026-07-01';
         if (records.length > 0) {
-          const dates = records.map(r => r.date).filter(Boolean).sort();
-          if (dates.length > 0 && dates[0] < minDate) {
-            minDate = dates[0];
+          const sorted = records.map(r => r.date).filter(Boolean).sort();
+          if (sorted.length > 0 && sorted[0] < earliest) {
+            earliest = sorted[0];
           }
         }
-        setStartDateStr(minDate);
+        setStartDateStr(earliest);
         setEndDateStr(format(now, 'yyyy-MM-dd'));
         break;
       }
       case 'custom':
-      default:
         break;
     }
   };
 
-  // Filter approved records strictly in the selected date range
+  // Filter records within the selected date range
   const recordsInPeriod = useMemo(() => {
     return records.filter(r => {
-      if (r.status === 'pending') return false;
-      if (!r.date) return false;
+      if (r.status === 'pending' || !r.date) return false;
       return r.date >= startDateStr && r.date <= endDateStr;
     });
   }, [records, startDateStr, endDateStr]);
 
-  // Generate Weeks List (Pekan Kajian Senin-Jum'at / Kalender) within the date range
-  const weeksInPeriod = useMemo(() => {
+  // Construct weeks within interval (Senin s/d Jum'at / Ahad)
+  const weeksInPeriod = useMemo((): WeekPeriodInfo[] => {
     try {
       const start = parseISO(startDateStr);
       const end = parseISO(endDateStr);
-      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+        return [];
+      }
 
       let currentMonday = startOfWeek(start, { weekStartsOn: 1 });
       const weeks: WeekPeriodInfo[] = [];
@@ -174,20 +184,16 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
 
       while (currentMonday <= end) {
         const currentSunday = endOfWeek(currentMonday, { weekStartsOn: 1 });
-        
-        // Effective start and end within interval
         const effectiveStart = currentMonday < start ? start : currentMonday;
         const effectiveEnd = currentSunday > end ? end : currentSunday;
 
         if (effectiveStart <= effectiveEnd) {
           const startISO = format(effectiveStart, 'yyyy-MM-dd');
           const endISO = format(effectiveEnd, 'yyyy-MM-dd');
-          const calStartISO = format(currentMonday, 'yyyy-MM-dd');
-          const calEndISO = format(currentSunday, 'yyyy-MM-dd');
+          const calendarWeekStartISO = format(currentMonday, 'yyyy-MM-dd');
+          const calendarWeekEndISO = format(currentSunday, 'yyyy-MM-dd');
 
-          // Human friendly range label (e.g. 31 Ags - 04 Sep 2026)
-          const isSameMonth = effectiveStart.getMonth() === effectiveEnd.getMonth();
-          const rangeLabel = isSameMonth
+          const rangeLabel = effectiveStart.getMonth() === effectiveEnd.getMonth()
             ? `${format(effectiveStart, 'dd', { locale: id })} - ${format(effectiveEnd, 'dd MMM yyyy', { locale: id })}`
             : `${format(effectiveStart, 'dd MMM', { locale: id })} - ${format(effectiveEnd, 'dd MMM yyyy', { locale: id })}`;
 
@@ -197,14 +203,12 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
             dateRangeLabel: rangeLabel,
             startISO,
             endISO,
-            calendarWeekStartISO: calStartISO,
-            calendarWeekEndISO: calEndISO,
+            calendarWeekStartISO,
+            calendarWeekEndISO
           });
-
           weekIndex++;
         }
 
-        // Advance by 7 days to next Monday
         currentMonday = new Date(currentMonday);
         currentMonday.setDate(currentMonday.getDate() + 7);
       }
@@ -216,24 +220,22 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
     }
   }, [startDateStr, endDateStr]);
 
-  // Unique recorded sessions (dates where attendance actually took place)
+  // Recorded Sessions in the period
   const recordedSessionsList = useMemo(() => {
     const sessionMap = new Map<string, { date: string; scheduleId: string; count: number }>();
     recordsInPeriod.forEach(r => {
       const key = `${r.date}_${r.scheduleId}`;
-      if (!sessionMap.has(key)) {
-        sessionMap.set(key, { date: r.date, scheduleId: r.scheduleId, count: 1 });
-      } else {
+      if (sessionMap.has(key)) {
         sessionMap.get(key)!.count += 1;
+      } else {
+        sessionMap.set(key, { date: r.date, scheduleId: r.scheduleId, count: 1 });
       }
     });
 
     return Array.from(sessionMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [recordsInPeriod]);
 
-  // Total assessment units:
-  // If calculationRule === 'weekly_rule' -> total assessment unit is Total Pekan (weeksInPeriod.length)
-  // If calculationRule === 'daily_session' -> total assessment unit is recordedSessionsList.length
+  // Total assessment units (either total weeks or total recorded sessions)
   const totalAssessmentUnits = useMemo(() => {
     if (calculationRule === 'weekly_rule') {
       return weeksInPeriod.length;
@@ -327,6 +329,11 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
   const displayedCivitas = useMemo(() => {
     let result = civitasRecap;
 
+    // Filter Employee Type
+    if (selectedEmployeeType !== 'All') {
+      result = result.filter(c => c.employeeType === selectedEmployeeType);
+    }
+
     // Filter Gender
     if (selectedGender !== 'All') {
       result = result.filter(c => c.gender === selectedGender);
@@ -362,13 +369,19 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
 
       return sortDirection === 'desc' ? comp : -comp;
     });
-  }, [civitasRecap, selectedGender, searchQuery, statusFilter, sortField, sortDirection]);
+  }, [civitasRecap, selectedEmployeeType, selectedGender, searchQuery, statusFilter, sortField, sortDirection]);
 
-  // Overall Statistics for Seluruh Civitas
+  // Overall Statistics for Seluruh Civitas & Kelompok Jenis Pegawai
   const overallStats = useMemo(() => {
     const totalCivitas = civitasData.length;
     const ikhwanList = civitasRecap.filter(c => c.gender === 'Ikhwan');
     const akhwatList = civitasRecap.filter(c => c.gender === 'Akhwat');
+
+    // Kelompok Jenis Pegawai
+    const bagianUmumList = civitasRecap.filter(c => c.employeeType === 'Bagian Umum');
+    const ptkList = civitasRecap.filter(c => c.employeeType === 'Pendidik dan Tenaga Kependidikan');
+    const ptkIkhwanList = ptkList.filter(c => c.gender === 'Ikhwan');
+    const ptkAkhwatList = ptkList.filter(c => c.gender === 'Akhwat');
 
     const totalPossibleUnitsAll = totalAssessmentUnits * totalCivitas;
     const totalAttendedUnitsAll = civitasRecap.reduce((acc, c) => acc + c.attendedUnits, 0);
@@ -395,6 +408,24 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
       ? ((totalAbsentAkhwat / totalPossibleAkhwat) * 100).toFixed(1) 
       : '0';
 
+    // Bagian Umum stats
+    const totalPossibleBagianUmum = totalAssessmentUnits * bagianUmumList.length;
+    const totalAbsentBagianUmum = bagianUmumList.reduce((acc, c) => acc + c.absentUnits, 0);
+    const totalAttendedBagianUmum = bagianUmumList.reduce((acc, c) => acc + c.attendedUnits, 0);
+    const bagianUmumAbsenceRate = totalPossibleBagianUmum > 0 
+      ? ((totalAbsentBagianUmum / totalPossibleBagianUmum) * 100).toFixed(1) 
+      : '0';
+    const bagianUmumPerfectCount = bagianUmumList.filter(c => c.absentUnits === 0 && totalAssessmentUnits > 0).length;
+
+    // PTK stats
+    const totalPossiblePTK = totalAssessmentUnits * ptkList.length;
+    const totalAbsentPTK = ptkList.reduce((acc, c) => acc + c.absentUnits, 0);
+    const totalAttendedPTK = ptkList.reduce((acc, c) => acc + c.attendedUnits, 0);
+    const ptkAbsenceRate = totalPossiblePTK > 0 
+      ? ((totalAbsentPTK / totalPossiblePTK) * 100).toFixed(1) 
+      : '0';
+    const ptkPerfectCount = ptkList.filter(c => c.absentUnits === 0 && totalAssessmentUnits > 0).length;
+
     // Civitas counts by status
     const perfectCount = civitasRecap.filter(c => c.absentUnits === 0 && totalAssessmentUnits > 0).length;
     const highAbsenceCount = civitasRecap.filter(c => c.category === 'critical').length;
@@ -413,6 +444,22 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
       ikhwanAbsenceRate,
       totalAbsentAkhwat,
       akhwatAbsenceRate,
+      // Kelompok Pegawai stats
+      bagianUmumCount: bagianUmumList.length,
+      bagianUmumList,
+      totalAbsentBagianUmum,
+      totalAttendedBagianUmum,
+      bagianUmumAbsenceRate,
+      bagianUmumPerfectCount,
+      ptkCount: ptkList.length,
+      ptkList,
+      ptkIkhwanCount: ptkIkhwanList.length,
+      ptkAkhwatCount: ptkAkhwatList.length,
+      totalAbsentPTK,
+      totalAttendedPTK,
+      ptkAbsenceRate,
+      ptkPerfectCount,
+      // Status counts
       perfectCount,
       highAbsenceCount,
       zeroAttendanceCount,
@@ -421,21 +468,27 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
     };
   }, [civitasRecap, totalAssessmentUnits]);
 
-  // Export to PDF
-  const downloadPDFReport = () => {
+  // Export to PDF with grouping by Employee Type
+  const downloadPDFReport = (targetGroup: 'All' | EmployeeType = 'All') => {
     const doc = new jsPDF();
+    const formattedStart = format(parseISO(startDateStr), 'dd MMMM yyyy', { locale: id });
+    const formattedEnd = format(parseISO(endDateStr), 'dd MMMM yyyy', { locale: id });
 
-    // Title & Header
-    doc.setFontSize(15);
+    // Header Title
+    doc.setFontSize(14);
     doc.setTextColor(15, 23, 42);
-    doc.text('LAPORAN REKAP KETIDAKHADIRAN KAJIAN CIVITAS', 14, 18);
+
+    if (targetGroup === 'Bagian Umum') {
+      doc.text('LAPORAN REKAP KETIDAKHADIRAN - BAGIAN UMUM', 14, 18);
+    } else if (targetGroup === 'Pendidik dan Tenaga Kependidikan') {
+      doc.text('LAPORAN REKAP KETIDAKHADIRAN - PENDIDIK & TENAGA KEPENDIDIKAN', 14, 18);
+    } else {
+      doc.text('LAPORAN REKAP KETIDAKHADIRAN KAJIAN CIVITAS', 14, 18);
+    }
     
     doc.setFontSize(10);
     doc.setTextColor(71, 85, 105);
     doc.text('Pondok Pesantren Al-Madina Al-Islami Prabumulih', 14, 24);
-    
-    const formattedStart = format(parseISO(startDateStr), 'dd MMMM yyyy', { locale: id });
-    const formattedEnd = format(parseISO(endDateStr), 'dd MMMM yyyy', { locale: id });
     doc.text(`Periode: ${formattedStart} s/d ${formattedEnd} (${weeksInPeriod.length} Pekan Kajian)`, 14, 30);
     
     doc.setFontSize(8.5);
@@ -445,101 +498,260 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
     // Summary Box
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(14, 40, 182, 24, 2, 2, 'FD');
+    doc.roundedRect(14, 40, 182, 26, 2, 2, 'FD');
 
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(`Total Civitas: ${overallStats.totalCivitas} orang (${overallStats.ikhwanCount} Ikhwan, ${overallStats.akhwatCount} Akhwat) | Total Pekan: ${overallStats.totalAssessmentUnits} Pekan`, 18, 47);
-    doc.text(`Total Ketidakhadiran Seluruh Civitas: ${overallStats.totalAbsentUnitsAll} pekan absen (Rata-rata: ${overallStats.avgAbsentPerCivitas} pekan / orang)`, 18, 53);
-    doc.text(`Tingkat Ketidakhadiran: ${overallStats.overallAbsenceRate}% (Ikhwan: ${overallStats.ikhwanAbsenceRate}%, Akhwat: ${overallStats.akhwatAbsenceRate}%) | Hadir Penuh: ${overallStats.perfectCount} orang`, 18, 59);
 
-    // Table 1: Ikhwan
-    doc.setFontSize(11);
-    doc.setTextColor(4, 120, 87);
-    doc.text('Rekap Ketidakhadiran Civitas Ikhwan', 14, 72);
-
-    const ikhwanRows = civitasRecap
-      .filter(c => c.gender === 'Ikhwan')
-      .sort((a, b) => b.absentUnits - a.absentUnits)
-      .map((c, index) => [
-        (index + 1).toString(),
-        c.name,
-        `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
-        c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
-        `${c.physicalAttendedCount}x`,
-        `${c.absenceRate.toFixed(0)}%`,
-        c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
-      ]);
-
-    autoTable(doc, {
-      startY: 76,
-      head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
-      body: ikhwanRows,
-      theme: 'grid',
-      headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },
-        2: { cellWidth: 26, halign: 'center' },
-        3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
-        4: { cellWidth: 24, halign: 'center' },
-        5: { cellWidth: 16, halign: 'center' },
-        6: { cellWidth: 32 }
-      }
-    });
-
-    // Table 2: Akhwat
-    const lastY = (doc as any).lastAutoTable.finalY || 160;
-    
-    if (lastY > 210) {
-      doc.addPage();
-      doc.setFontSize(11);
-      doc.setTextColor(4, 120, 87);
-      doc.text('Rekap Ketidakhadiran Civitas Akhwat', 14, 20);
+    if (targetGroup === 'Bagian Umum') {
+      doc.text(`Kelompok: Jenis Pegawai Bagian Umum (Total: ${overallStats.bagianUmumCount} Pegawai) | Total Pekan: ${overallStats.totalAssessmentUnits} Pekan`, 18, 47);
+      doc.text(`Total Ketidakhadiran: ${overallStats.totalAbsentBagianUmum} pekan absen (Rata-rata: ${(overallStats.totalAbsentBagianUmum / (overallStats.bagianUmumCount || 1)).toFixed(1)} pekan/orang)`, 18, 53);
+      doc.text(`Tingkat Ketidakhadiran: ${overallStats.bagianUmumAbsenceRate}% | Hadir Penuh (0x Absen): ${overallStats.bagianUmumPerfectCount} orang`, 18, 59);
+    } else if (targetGroup === 'Pendidik dan Tenaga Kependidikan') {
+      doc.text(`Kelompok: Pendidik & Tenaga Kependidikan (Total: ${overallStats.ptkCount} Pegawai: ${overallStats.ptkIkhwanCount} Ikhwan, ${overallStats.ptkAkhwatCount} Akhwat)`, 18, 47);
+      doc.text(`Total Ketidakhadiran: ${overallStats.totalAbsentPTK} pekan absen (Rata-rata: ${(overallStats.totalAbsentPTK / (overallStats.ptkCount || 1)).toFixed(1)} pekan/orang)`, 18, 53);
+      doc.text(`Tingkat Ketidakhadiran: ${overallStats.ptkAbsenceRate}% | Hadir Penuh (0x Absen): ${overallStats.ptkPerfectCount} orang`, 18, 59);
     } else {
-      doc.setFontSize(11);
-      doc.setTextColor(4, 120, 87);
-      doc.text('Rekap Ketidakhadiran Civitas Akhwat', 14, lastY + 12);
+      doc.text(`Total Civitas: ${overallStats.totalCivitas} orang (Bagian Umum: ${overallStats.bagianUmumCount}, Pendidik & Kependidikan: ${overallStats.ptkCount}) | Total: ${overallStats.totalAssessmentUnits} Pekan`, 18, 46);
+      doc.text(`Total Ketidakhadiran Seluruh Civitas: ${overallStats.totalAbsentUnitsAll} pekan absen (Tingkat Absen Kolektif: ${overallStats.overallAbsenceRate}%)`, 18, 51.5);
+      doc.text(`• Bagian Umum (${overallStats.bagianUmumCount} org): ${overallStats.totalAbsentBagianUmum} pekan absen (${overallStats.bagianUmumAbsenceRate}%) | Hadir Penuh: ${overallStats.bagianUmumPerfectCount} org`, 18, 57);
+      doc.text(`• Pendidik & Tenaga Kependidikan (${overallStats.ptkCount} org): ${overallStats.totalAbsentPTK} pekan absen (${overallStats.ptkAbsenceRate}%) | Hadir Penuh: ${overallStats.ptkPerfectCount} org`, 18, 62.5);
     }
 
-    const akhwatRows = civitasRecap
-      .filter(c => c.gender === 'Akhwat')
-      .sort((a, b) => b.absentUnits - a.absentUnits)
-      .map((c, index) => [
-        (index + 1).toString(),
-        c.name,
-        `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
-        c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
-        `${c.physicalAttendedCount}x`,
-        `${c.absenceRate.toFixed(0)}%`,
-        c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
-      ]);
+    const tableColumns = [
+      { 0: { cellWidth: 8, halign: 'center' as const } },
+      { 2: { cellWidth: 26, halign: 'center' as const } },
+      { 3: { cellWidth: 28, halign: 'center' as const, fontStyle: 'bold' as const } },
+      { 4: { cellWidth: 22, halign: 'center' as const } },
+      { 5: { cellWidth: 16, halign: 'center' as const } },
+      { 6: { cellWidth: 32 } }
+    ];
 
-    autoTable(doc, {
-      startY: lastY > 210 ? 25 : lastY + 16,
-      head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
-      body: akhwatRows,
-      theme: 'grid',
-      headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },
-        2: { cellWidth: 26, halign: 'center' },
-        3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
-        4: { cellWidth: 24, halign: 'center' },
-        5: { cellWidth: 16, halign: 'center' },
-        6: { cellWidth: 32 }
+    if (targetGroup === 'Bagian Umum' || targetGroup === 'All') {
+      // 1. BAGIAN UMUM TABLE
+      doc.setFontSize(11);
+      doc.setTextColor(180, 83, 9); // amber-700
+      doc.text(`1. Kelompok Pegawai: Bagian Umum (${overallStats.bagianUmumCount} Civitas)`, 14, 74);
+
+      const bagianUmumRows = civitasRecap
+        .filter(c => c.employeeType === 'Bagian Umum')
+        .sort((a, b) => b.absentUnits - a.absentUnits)
+        .map((c, index) => [
+          (index + 1).toString(),
+          c.name,
+          `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+          c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+          `${c.physicalAttendedCount}x`,
+          `${c.absenceRate.toFixed(0)}%`,
+          c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
+        ]);
+
+      autoTable(doc, {
+        startY: 78,
+        head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
+        body: bagianUmumRows,
+        theme: 'grid',
+        headStyles: { fillColor: [180, 83, 9], textColor: [255, 255, 255] },
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          2: { cellWidth: 26, halign: 'center' },
+          3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+          4: { cellWidth: 22, halign: 'center' },
+          5: { cellWidth: 16, halign: 'center' },
+          6: { cellWidth: 32 }
+        }
+      });
+    }
+
+    if (targetGroup === 'Pendidik dan Tenaga Kependidikan' || targetGroup === 'All') {
+      if (targetGroup === 'All') {
+        // Start PTK on new page for clean executive reading
+        doc.addPage();
+        doc.setFontSize(14);
+        doc.setTextColor(15, 23, 42);
+        doc.text('LAPORAN REKAP KETIDAKHADIRAN KAJIAN CIVITAS', 14, 18);
+        doc.setFontSize(10);
+        doc.setTextColor(71, 85, 105);
+        doc.text('Pondok Pesantren Al-Madina Al-Islami Prabumulih', 14, 24);
+        doc.setFontSize(11);
+        doc.setTextColor(4, 120, 87);
+        doc.text(`2. Kelompok Pegawai: Pendidik dan Tenaga Kependidikan (${overallStats.ptkCount} Civitas)`, 14, 32);
+        
+        // PTK Ikhwan
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`A. Pendidik & Tenaga Kependidikan - Ikhwan (${overallStats.ptkIkhwanCount} Civitas)`, 14, 40);
+
+        const ptkIkhwanRows = civitasRecap
+          .filter(c => c.employeeType === 'Pendidik dan Tenaga Kependidikan' && c.gender === 'Ikhwan')
+          .sort((a, b) => b.absentUnits - a.absentUnits)
+          .map((c, index) => [
+            (index + 1).toString(),
+            c.name,
+            `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+            c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+            `${c.physicalAttendedCount}x`,
+            `${c.absenceRate.toFixed(0)}%`,
+            c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
+          ]);
+
+        autoTable(doc, {
+          startY: 44,
+          head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
+          body: ptkIkhwanRows,
+          theme: 'grid',
+          headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },
+            2: { cellWidth: 26, halign: 'center' },
+            3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+            4: { cellWidth: 22, halign: 'center' },
+            5: { cellWidth: 16, halign: 'center' },
+            6: { cellWidth: 32 }
+          }
+        });
+
+        // PTK Akhwat
+        const lastY = (doc as any).lastAutoTable.finalY || 160;
+        let startAkhwatY = lastY + 12;
+
+        if (startAkhwatY > 210) {
+          doc.addPage();
+          startAkhwatY = 20;
+        }
+
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`B. Pendidik & Tenaga Kependidikan - Akhwat (${overallStats.ptkAkhwatCount} Civitas)`, 14, startAkhwatY);
+
+        const ptkAkhwatRows = civitasRecap
+          .filter(c => c.employeeType === 'Pendidik dan Tenaga Kependidikan' && c.gender === 'Akhwat')
+          .sort((a, b) => b.absentUnits - a.absentUnits)
+          .map((c, index) => [
+            (index + 1).toString(),
+            c.name,
+            `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+            c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+            `${c.physicalAttendedCount}x`,
+            `${c.absenceRate.toFixed(0)}%`,
+            c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
+          ]);
+
+        autoTable(doc, {
+          startY: startAkhwatY + 4,
+          head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
+          body: ptkAkhwatRows,
+          theme: 'grid',
+          headStyles: { fillColor: [109, 40, 217], textColor: [255, 255, 255] }, // purple-700
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },
+            2: { cellWidth: 26, halign: 'center' },
+            3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+            4: { cellWidth: 22, halign: 'center' },
+            5: { cellWidth: 16, halign: 'center' },
+            6: { cellWidth: 32 }
+          }
+        });
+      } else {
+        // Dedicated PTK Document
+        doc.setFontSize(11);
+        doc.setTextColor(4, 120, 87);
+        doc.text(`Pendidik & Tenaga Kependidikan - Ikhwan (${overallStats.ptkIkhwanCount} Civitas)`, 14, 74);
+
+        const ptkIkhwanRows = civitasRecap
+          .filter(c => c.employeeType === 'Pendidik dan Tenaga Kependidikan' && c.gender === 'Ikhwan')
+          .sort((a, b) => b.absentUnits - a.absentUnits)
+          .map((c, index) => [
+            (index + 1).toString(),
+            c.name,
+            `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+            c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+            `${c.physicalAttendedCount}x`,
+            `${c.absenceRate.toFixed(0)}%`,
+            c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
+          ]);
+
+        autoTable(doc, {
+          startY: 78,
+          head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
+          body: ptkIkhwanRows,
+          theme: 'grid',
+          headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },
+            2: { cellWidth: 26, halign: 'center' },
+            3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+            4: { cellWidth: 22, halign: 'center' },
+            5: { cellWidth: 16, halign: 'center' },
+            6: { cellWidth: 32 }
+          }
+        });
+
+        const lastY = (doc as any).lastAutoTable.finalY || 160;
+        let startAkhwatY = lastY + 12;
+
+        if (startAkhwatY > 210) {
+          doc.addPage();
+          startAkhwatY = 20;
+        }
+
+        doc.setFontSize(11);
+        doc.setTextColor(109, 40, 217);
+        doc.text(`Pendidik & Tenaga Kependidikan - Akhwat (${overallStats.ptkAkhwatCount} Civitas)`, 14, startAkhwatY);
+
+        const ptkAkhwatRows = civitasRecap
+          .filter(c => c.employeeType === 'Pendidik dan Tenaga Kependidikan' && c.gender === 'Akhwat')
+          .sort((a, b) => b.absentUnits - a.absentUnits)
+          .map((c, index) => [
+            (index + 1).toString(),
+            c.name,
+            `${c.attendedUnits} / ${overallStats.totalAssessmentUnits} Pekan`,
+            c.absentUnits > 0 ? `${c.absentUnits}x Pekan Absen` : '0x (Nol Absen)',
+            `${c.physicalAttendedCount}x`,
+            `${c.absenceRate.toFixed(0)}%`,
+            c.absentUnits === 0 ? 'Hadir Penuh' : c.category === 'critical' ? 'Perlu Pembinaan' : 'Perlu Perhatian'
+          ]);
+
+        autoTable(doc, {
+          startY: startAkhwatY + 4,
+          head: [['No', 'Nama Civitas', 'Pekan Hadir', 'Ketidakhadiran', 'Presensi Fisik', '% Absen', 'Evaluasi']],
+          body: ptkAkhwatRows,
+          theme: 'grid',
+          headStyles: { fillColor: [109, 40, 217], textColor: [255, 255, 255] },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 8, halign: 'center' },
+            2: { cellWidth: 26, halign: 'center' },
+            3: { cellWidth: 28, halign: 'center', fontStyle: 'bold' },
+            4: { cellWidth: 22, halign: 'center' },
+            5: { cellWidth: 16, halign: 'center' },
+            6: { cellWidth: 32 }
+          }
+        });
       }
-    });
+    }
 
-    doc.save(`Rekap_Ketidakhadiran_Kajian_${startDateStr}_sd_${endDateStr}.pdf`);
+    let filename = `Rekap_Ketidakhadiran_Kajian_Lengkap_Per_Jenis_Pegawai_${startDateStr}_sd_${endDateStr}.pdf`;
+    if (targetGroup === 'Bagian Umum') {
+      filename = `Rekap_Ketidakhadiran_Bagian_Umum_${startDateStr}_sd_${endDateStr}.pdf`;
+    } else if (targetGroup === 'Pendidik dan Tenaga Kependidikan') {
+      filename = `Rekap_Ketidakhadiran_Pendidik_Tenaga_Kependidikan_${startDateStr}_sd_${endDateStr}.pdf`;
+    }
+
+    doc.save(filename);
+    setPdfMenuOpen(false);
   };
 
-  // Export to CSV
-  const downloadCSVReport = () => {
+  // Export to CSV with grouping by Employee Type
+  const downloadCSVReport = (targetGroup: 'All' | EmployeeType = 'All') => {
     const headers = [
       'No', 
       'Nama Civitas', 
+      'Jenis Pegawai',
       'Gender', 
       'Total Pekan Kajian', 
       'Pekan Terpenuhi (Hadir Min 1x)', 
@@ -549,11 +761,23 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
       'Status Evaluasi'
     ];
     
-    const rows = civitasRecap
-      .sort((a, b) => b.absentUnits - a.absentUnits)
+    let targetList = civitasRecap;
+    if (targetGroup !== 'All') {
+      targetList = targetList.filter(c => c.employeeType === targetGroup);
+    }
+
+    const rows = [...targetList]
+      .sort((a, b) => {
+        // Group Bagian Umum first, then PTK if All
+        if (targetGroup === 'All' && a.employeeType !== b.employeeType) {
+          return a.employeeType === 'Bagian Umum' ? -1 : 1;
+        }
+        return b.absentUnits - a.absentUnits;
+      })
       .map((c, i) => [
         i + 1,
         `"${c.name}"`,
+        `"${c.employeeType}"`,
         c.gender,
         overallStats.totalAssessmentUnits,
         c.attendedUnits,
@@ -566,13 +790,21 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' 
       + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
 
+    let filename = `Rekap_Ketidakhadiran_Kajian_Lengkap_Per_Jenis_Pegawai_${startDateStr}_sd_${endDateStr}.csv`;
+    if (targetGroup === 'Bagian Umum') {
+      filename = `Rekap_Ketidakhadiran_Bagian_Umum_${startDateStr}_sd_${endDateStr}.csv`;
+    } else if (targetGroup === 'Pendidik dan Tenaga Kependidikan') {
+      filename = `Rekap_Ketidakhadiran_Pendidik_Tenaga_Kependidikan_${startDateStr}_sd_${endDateStr}.csv`;
+    }
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Rekap_Ketidakhadiran_Kajian_${startDateStr}_sd_${endDateStr}.csv`);
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setCsvMenuOpen(false);
   };
 
   return (
@@ -589,27 +821,121 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
               <h2 className="text-lg font-bold text-slate-800">Rekap Ketidakhadiran Kajian Civitas</h2>
             </div>
             <p className="text-sm text-slate-500 mt-1">
-              Perhitungan ketidakhadiran berbasis tanggal kustom sesuai aturan kehadiran minimal sepekan.
+              Perhitungan ketidakhadiran berbasis tanggal kustom dengan pengelompokan Jenis Pegawai.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={downloadPDFReport}
-              className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm"
-              title="Unduh Laporan PDF"
-            >
-              <Download size={16} />
-              <span>Unduh PDF</span>
-            </button>
-            <button
-              onClick={downloadCSVReport}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm"
-              title="Ekspor ke Excel / CSV"
-            >
-              <FileSpreadsheet size={16} />
-              <span>Ekspor CSV</span>
-            </button>
+          {/* Download Buttons with Dropdown Grouping */}
+          <div className="flex flex-wrap items-center gap-2 relative">
+            
+            {/* PDF Dropdown Button */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setPdfMenuOpen(!pdfMenuOpen);
+                  setCsvMenuOpen(false);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm"
+                title="Unduh Laporan PDF"
+              >
+                <Download size={16} />
+                <span>Unduh PDF</span>
+                <ChevronDown size={14} className={cn("transition-transform", pdfMenuOpen && "rotate-180")} />
+              </button>
+
+              {pdfMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Pilihan Pengelompokan PDF
+                  </div>
+                  <button
+                    onClick={() => downloadPDFReport('All')}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-start gap-2.5 transition"
+                  >
+                    <Layers className="text-rose-600 shrink-0 mt-0.5" size={16} />
+                    <div>
+                      <div className="font-bold text-slate-800">Semua Jenis Pegawai (Dikelompokkan)</div>
+                      <div className="text-[11px] text-slate-500">Laporan gabungan Bagian Umum & PTK lengkap</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => downloadPDFReport('Bagian Umum')}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-amber-50 flex items-start gap-2.5 transition"
+                  >
+                    <Briefcase className="text-amber-600 shrink-0 mt-0.5" size={16} />
+                    <div>
+                      <div className="font-bold text-slate-800">Khusus Bagian Umum ({overallStats.bagianUmumCount} Pegawai)</div>
+                      <div className="text-[11px] text-slate-500">Hanya civitas pegawai Bagian Umum</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => downloadPDFReport('Pendidik dan Tenaga Kependidikan')}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-indigo-50 flex items-start gap-2.5 transition"
+                  >
+                    <GraduationCap className="text-indigo-600 shrink-0 mt-0.5" size={16} />
+                    <div>
+                      <div className="font-bold text-slate-800">Khusus Pendidik & Tenaga Kependidikan ({overallStats.ptkCount})</div>
+                      <div className="text-[11px] text-slate-500">Tabel Ikhwan & Akhwat PTK</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* CSV Dropdown Button */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setCsvMenuOpen(!csvMenuOpen);
+                  setPdfMenuOpen(false);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-sm"
+                title="Ekspor ke Excel / CSV"
+              >
+                <FileSpreadsheet size={16} />
+                <span>Ekspor CSV</span>
+                <ChevronDown size={14} className={cn("transition-transform", csvMenuOpen && "rotate-180")} />
+              </button>
+
+              {csvMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Pilihan Pengelompokan CSV
+                  </div>
+                  <button
+                    onClick={() => downloadCSVReport('All')}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-start gap-2.5 transition"
+                  >
+                    <Layers className="text-emerald-600 shrink-0 mt-0.5" size={16} />
+                    <div>
+                      <div className="font-bold text-slate-800">Semua Jenis Pegawai (Lengkap)</div>
+                      <div className="text-[11px] text-slate-500">Dengan kolom Jenis Pegawai (51 civitas)</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => downloadCSVReport('Bagian Umum')}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-amber-50 flex items-start gap-2.5 transition"
+                  >
+                    <Briefcase className="text-amber-600 shrink-0 mt-0.5" size={16} />
+                    <div>
+                      <div className="font-bold text-slate-800">Khusus Bagian Umum ({overallStats.bagianUmumCount} Pegawai)</div>
+                      <div className="text-[11px] text-slate-500">File spreadsheet khusus Bagian Umum</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => downloadCSVReport('Pendidik dan Tenaga Kependidikan')}
+                    className="w-full text-left px-3.5 py-2.5 text-xs text-slate-700 hover:bg-indigo-50 flex items-start gap-2.5 transition"
+                  >
+                    <GraduationCap className="text-indigo-600 shrink-0 mt-0.5" size={16} />
+                    <div>
+                      <div className="font-bold text-slate-800">Khusus Pendidik & Tenaga Kependidikan ({overallStats.ptkCount})</div>
+                      <div className="text-[11px] text-slate-500">File spreadsheet khusus PTK</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
 
@@ -619,7 +945,7 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
           <div>
             <h4 className="font-bold text-emerald-950 text-sm">Ketentuan Perhitungan Kehadiran Kajian Pekanan (Senin–Jum'at):</h4>
             <p className="mt-1 text-emerald-800">
-              • <strong>Hadir $\ge$ 1 kali sepekan:</strong> Civitas sudah memenuhi kewajiban hadir kajian pekan tersebut. Hari lain pada pekan tersebut <strong>tidak dihitung absen</strong> (terhitung hadir).
+              • <strong>Hadir &ge; 1 kali sepekan:</strong> Civitas sudah memenuhi kewajiban hadir kajian pekan tersebut. Hari lain pada pekan tersebut <strong>tidak dihitung absen</strong> (terhitung hadir).
             </p>
             <p className="mt-0.5 text-emerald-800">
               • <strong>Tidak hadir sama sekali sepekan:</strong> Jika civitas tidak mengisi presensi minimal satu kali dalam satu pekan kajian, maka dihitung <strong>1 kali ketidakhadiran per pekan</strong>.
@@ -628,40 +954,96 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
         </div>
 
         {/* Pilihan Preset Cepat */}
-        <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-          <span className="text-xs font-semibold text-slate-500 self-center mr-1">Preset:</span>
-          {(
-            [
-              { key: 'contoh_user', label: '31 Ags - 04 Okt 2026 (5 Pekan)' },
-              { key: 'this_month', label: 'Bulan Ini' },
-              { key: 'last_month', label: 'Bulan Lalu' },
-              { key: 'this_week', label: 'Pekan Ini' },
-              { key: 'last_week', label: 'Pekan Lalu' },
-              { key: 'last_30_days', label: '30 Hari Terakhir' },
-              { key: 'all_time', label: 'Sepanjang Waktu' },
-              { key: 'custom', label: 'Rentang Kustom' },
-            ] as const
-          ).map(p => (
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+            Pilihan Periode Tanggal Cepat:
+          </label>
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
-              key={p.key}
-              onClick={() => applyPreset(p.key)}
+              onClick={() => applyPreset('contoh_user')}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                periodPreset === p.key
-                  ? "bg-emerald-700 text-white shadow-sm font-semibold"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'contoh_user'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
               )}
             >
-              {p.label}
+              📅 31 Agt - 04 Okt 2026 (Periode Contoh)
             </button>
-          ))}
+            <button
+              onClick={() => applyPreset('this_month')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'this_month'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              )}
+            >
+              Bulan Ini
+            </button>
+            <button
+              onClick={() => applyPreset('last_month')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'last_month'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              )}
+            >
+              Bulan Lalu
+            </button>
+            <button
+              onClick={() => applyPreset('this_week')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'this_week'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              )}
+            >
+              Pekan Ini
+            </button>
+            <button
+              onClick={() => applyPreset('last_week')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'last_week'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              )}
+            >
+              Pekan Lalu
+            </button>
+            <button
+              onClick={() => applyPreset('last_30_days')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'last_30_days'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              )}
+            >
+              30 Hari Terakhir
+            </button>
+            <button
+              onClick={() => applyPreset('all_time')}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border",
+                periodPreset === 'all_time'
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                  : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              )}
+            >
+              Semua Riwayat
+            </button>
+          </div>
         </div>
 
-        {/* Input Tanggal Mulai dan Selesai (Custom) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-1">
+        {/* Input Kustom Tanggal & Metode Perhitungan */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Tanggal Mulai (Dari)
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Tanggal Mulai (Custom)
             </label>
             <input
               type="date"
@@ -670,13 +1052,13 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                 setStartDateStr(e.target.value);
                 setPeriodPreset('custom');
               }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none transition"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Tanggal Selesai (Sampai)
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Tanggal Selesai (Custom)
             </label>
             <input
               type="date"
@@ -685,18 +1067,18 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                 setEndDateStr(e.target.value);
                 setPeriodPreset('custom');
               }}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none transition"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Metode Perhitungan Ketidakhadiran
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Metode Perhitungan
             </label>
             <select
               value={calculationRule}
               onChange={(e) => setCalculationRule(e.target.value as CalculationRule)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none transition"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
             >
               <option value="weekly_rule">Aturan Pekanan (Min. 1x / Pekan = Hadir Penuh)</option>
               <option value="daily_session">Hitung Per-Sesi Kajian Harian</option>
@@ -720,7 +1102,126 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
         </div>
       </div>
 
-      {/* 2. Executive Stat Cards: Rekap Seluruh Civitas */}
+      {/* 2. Kartu Komparasi Kelompok Jenis Pegawai */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        {/* Kelompok Bagian Umum */}
+        <div className="bg-gradient-to-br from-amber-50/70 via-white to-white p-5 rounded-2xl border border-amber-200 shadow-sm relative overflow-hidden">
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                  <Briefcase size={16} />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                  Jenis Pegawai: Bagian Umum
+                </span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-800 mt-2.5">
+                {overallStats.totalAbsentBagianUmum}{' '}
+                <span className="text-sm font-medium text-slate-500">pekan absen</span>
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Total <strong>{overallStats.bagianUmumCount} civitas</strong> • Tingkat Absen: <strong className="text-amber-800">{overallStats.bagianUmumAbsenceRate}%</strong>
+              </p>
+            </div>
+            
+            <div className="flex flex-col gap-1 items-end">
+              <button
+                onClick={() => downloadPDFReport('Bagian Umum')}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+                title="Unduh PDF Bagian Umum"
+              >
+                <Download size={13} />
+                <span>PDF Bagian Umum</span>
+              </button>
+              <button
+                onClick={() => downloadCSVReport('Bagian Umum')}
+                className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold transition"
+                title="Ekspor CSV Bagian Umum"
+              >
+                <FileSpreadsheet size={13} />
+                <span>CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-amber-100 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="bg-white/80 p-2 rounded-xl border border-amber-100">
+              <span className="block text-slate-400 text-[10px]">Hadir Penuh</span>
+              <strong className="text-emerald-700 text-sm">{overallStats.bagianUmumPerfectCount} org</strong>
+            </div>
+            <div className="bg-white/80 p-2 rounded-xl border border-amber-100">
+              <span className="block text-slate-400 text-[10px]">Pekan Terpenuhi</span>
+              <strong className="text-slate-800 text-sm">{overallStats.totalAttendedBagianUmum}</strong>
+            </div>
+            <div className="bg-white/80 p-2 rounded-xl border border-amber-100">
+              <span className="block text-slate-400 text-[10px]">Rata-rata Absen</span>
+              <strong className="text-amber-700 text-sm">{(overallStats.totalAbsentBagianUmum / (overallStats.bagianUmumCount || 1)).toFixed(1)} /org</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Kelompok Pendidik dan Tenaga Kependidikan */}
+        <div className="bg-gradient-to-br from-indigo-50/70 via-white to-white p-5 rounded-2xl border border-indigo-200 shadow-sm relative overflow-hidden">
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-indigo-100 text-indigo-800 rounded-lg">
+                  <GraduationCap size={16} />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">
+                  Jenis Pegawai: Pendidik & Tenaga Kependidikan
+                </span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-800 mt-2.5">
+                {overallStats.totalAbsentPTK}{' '}
+                <span className="text-sm font-medium text-slate-500">pekan absen</span>
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Total <strong>{overallStats.ptkCount} civitas</strong> ({overallStats.ptkIkhwanCount} Ikhwan, {overallStats.ptkAkhwatCount} Akhwat) • Tingkat Absen: <strong className="text-indigo-800">{overallStats.ptkAbsenceRate}%</strong>
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1 items-end">
+              <button
+                onClick={() => downloadPDFReport('Pendidik dan Tenaga Kependidikan')}
+                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition"
+                title="Unduh PDF Pendidik & Tenaga Kependidikan"
+              >
+                <Download size={13} />
+                <span>PDF PTK</span>
+              </button>
+              <button
+                onClick={() => downloadCSVReport('Pendidik dan Tenaga Kependidikan')}
+                className="flex items-center gap-1 px-3 py-1 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-lg text-xs font-semibold transition"
+                title="Ekspor CSV PTK"
+              >
+                <FileSpreadsheet size={13} />
+                <span>CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-indigo-100 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="bg-white/80 p-2 rounded-xl border border-indigo-100">
+              <span className="block text-slate-400 text-[10px]">Hadir Penuh</span>
+              <strong className="text-emerald-700 text-sm">{overallStats.ptkPerfectCount} org</strong>
+            </div>
+            <div className="bg-white/80 p-2 rounded-xl border border-indigo-100">
+              <span className="block text-slate-400 text-[10px]">Pekan Terpenuhi</span>
+              <strong className="text-slate-800 text-sm">{overallStats.totalAttendedPTK}</strong>
+            </div>
+            <div className="bg-white/80 p-2 rounded-xl border border-indigo-100">
+              <span className="block text-slate-400 text-[10px]">Rata-rata Absen</span>
+              <strong className="text-indigo-700 text-sm">{(overallStats.totalAbsentPTK / (overallStats.ptkCount || 1)).toFixed(1)} /org</strong>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 3. Executive Stat Cards: Rekap Seluruh Civitas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Ketidakhadiran Seluruh Civitas */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
@@ -742,8 +1243,8 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-            <span>Ikhwan: <strong>{overallStats.totalAbsentIkhwan} pekan</strong></span>
-            <span>Akhwat: <strong>{overallStats.totalAbsentAkhwat} pekan</strong></span>
+            <span>Bagian Umum: <strong>{overallStats.totalAbsentBagianUmum}</strong></span>
+            <span>PTK: <strong>{overallStats.totalAbsentPTK}</strong></span>
           </div>
         </div>
 
@@ -826,7 +1327,7 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
         </div>
       </div>
 
-      {/* 3. Tabel Rekap Ketidakhadiran Per-Individu */}
+      {/* 4. Tabel Rekap Ketidakhadiran Per-Individu */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         
         {/* Filter bar tabel */}
@@ -840,26 +1341,47 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                 </span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Civitas dengan ketidakhadiran terbanyak diprioritaskan di baris teratas.
+                Dapat difilter berdasarkan Jenis Pegawai, Gender, dan Tingkat Ketidakhadiran.
               </p>
             </div>
 
-            {/* Filter Gender Tabs */}
-            <div className="bg-slate-100 p-1 rounded-xl flex">
-              {(['All', 'Ikhwan', 'Akhwat'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setSelectedGender(tab)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all",
-                    selectedGender === tab 
-                      ? "bg-white text-slate-800 shadow-sm" 
-                      : "text-slate-500 hover:text-slate-700"
-                  )}
-                >
-                  {tab === 'All' ? 'Semua Civitas' : tab}
-                </button>
-              ))}
+            {/* Filter Jenis Pegawai Tabs */}
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+              <button
+                onClick={() => setSelectedEmployeeType('All')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                  selectedEmployeeType === 'All'
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
+              >
+                Semua Pegawai ({overallStats.totalCivitas})
+              </button>
+              <button
+                onClick={() => setSelectedEmployeeType('Bagian Umum')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                  selectedEmployeeType === 'Bagian Umum'
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-amber-800 hover:bg-amber-50"
+                )}
+              >
+                <Briefcase size={12} />
+                Bagian Umum ({overallStats.bagianUmumCount})
+              </button>
+              <button
+                onClick={() => setSelectedEmployeeType('Pendidik dan Tenaga Kependidikan')}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                  selectedEmployeeType === 'Pendidik dan Tenaga Kependidikan'
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-indigo-800 hover:bg-indigo-50"
+                )}
+              >
+                <GraduationCap size={12} />
+                Pendidik & PTK ({overallStats.ptkCount})
+              </button>
             </div>
           </div>
 
@@ -869,7 +1391,7 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
               <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
               <input
                 type="text"
-                placeholder="Cari nama civitas (cth: Anggara Pratodi, Alvin, dll)..."
+                placeholder="Cari nama civitas (cth: Agus Arwanto, Alvin, Anggara Pratodi)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
@@ -884,13 +1406,31 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
               )}
             </div>
 
+            {/* Filter Gender */}
+            <div className="bg-slate-100 p-1 rounded-xl flex shrink-0">
+              {(['All', 'Ikhwan', 'Akhwat'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setSelectedGender(tab)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                    selectedGender === tab 
+                      ? "bg-white text-slate-800 shadow-xs" 
+                      : "text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  {tab === 'All' ? 'Semua Gender' : tab}
+                </button>
+              ))}
+            </div>
+
             {/* Status Filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
             >
-              <option value="all">Semua Status Evaluasi</option>
+              <option value="all">Semua Evaluasi</option>
               <option value="high_absence">Perlu Pembinaan (Absen Tinggi)</option>
               <option value="medium_absence">Perlu Perhatian</option>
               <option value="perfect">Hadir Penuh (0 Absen)</option>
@@ -908,9 +1448,9 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
             >
               <option value="absent_desc">Ketidakhadiran: Terbanyak → Sedikit</option>
               <option value="absent_asc">Ketidakhadiran: Sedikit → Terbanyak</option>
-              <option value="attended_desc">Kehadiran: Terbanyak → Sedikit</option>
-              <option value="name_asc">Nama: A → Z</option>
-              <option value="name_desc">Nama: Z → A</option>
+              <option value="attended_desc">Kehadiran Terbanyak</option>
+              <option value="rate_desc">% Absen Tertinggi</option>
+              <option value="name_asc">Nama (A-Z)</option>
             </select>
           </div>
         </div>
@@ -919,24 +1459,24 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 <th className="px-5 py-3.5 text-center w-12">No</th>
-                <th className="px-5 py-3.5">Nama Civitas</th>
-                <th className="px-5 py-3.5 text-center">Kategori</th>
+                <th className="px-5 py-3.5">Nama Civitas & Jenis Pegawai</th>
+                <th className="px-5 py-3.5 text-center">Gender</th>
                 <th className="px-5 py-3.5 text-center">
-                  {calculationRule === 'weekly_rule' ? 'Pekan Hadir (Min 1x)' : 'Kehadiran'}
+                  {calculationRule === 'weekly_rule' ? 'Pekan Terpenuhi' : 'Presensi Tercatat'}
                 </th>
-                <th className="px-5 py-3.5 text-center">Total Ketidakhadiran</th>
-                <th className="px-5 py-3.5 text-center">Rincian Pekan</th>
+                <th className="px-5 py-3.5 text-center">Ketidakhadiran</th>
+                <th className="px-5 py-3.5 text-center">Status Tiap Pekan</th>
                 <th className="px-5 py-3.5 text-center">% Ketidakhadiran</th>
                 <th className="px-5 py-3.5 text-center">Status Evaluasi</th>
-                <th className="px-5 py-3.5 text-right">Aksi</th>
+                <th className="px-5 py-3.5 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {displayedCivitas.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-5 py-12 text-center text-slate-400 text-sm">
                     Tidak ditemukan data civitas yang sesuai dengan filter pencarian.
                   </td>
                 </tr>
@@ -948,8 +1488,28 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                         {index + 1}
                       </td>
                       <td className="px-5 py-4">
-                        <div className="font-semibold text-slate-800">{civitas.name}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-slate-800">{civitas.name}</span>
+                          <span className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-semibold border flex items-center gap-1",
+                            civitas.employeeType === 'Bagian Umum'
+                              ? "bg-amber-50 text-amber-800 border-amber-200"
+                              : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                          )}>
+                            {civitas.employeeType === 'Bagian Umum' ? (
+                              <>
+                                <Briefcase size={10} />
+                                Bagian Umum
+                              </>
+                            ) : (
+                              <>
+                                <GraduationCap size={10} />
+                                Pendidik & PTK
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 mt-1">
                           Presensi Fisik: <strong>{civitas.physicalAttendedCount} kali</strong>
                         </div>
                       </td>
@@ -1019,49 +1579,50 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                           <span className="text-xs font-bold text-slate-700">
                             {civitas.absenceRate.toFixed(0)}%
                           </span>
-                          <div className="w-16 bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
-                            <div 
+                          <div className="w-16 bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
+                            <div
                               className={cn(
                                 "h-full rounded-full",
-                                civitas.absentUnits === 0 
-                                  ? "bg-emerald-500" 
-                                  : civitas.category === 'critical' 
+                                civitas.absenceRate > 50 
                                   ? "bg-rose-500" 
-                                  : "bg-amber-500"
-                              )} 
-                              style={{ width: `${Math.min(100, civitas.absenceRate)}%` }}
+                                  : civitas.absenceRate > 25 
+                                  ? "bg-amber-500" 
+                                  : "bg-emerald-500"
+                              )}
+                              style={{ width: `${civitas.absenceRate}%` }}
                             />
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-center">
-                        {civitas.absentUnits === 0 ? (
-                          <span className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                            Hadir Penuh
-                          </span>
-                        ) : civitas.category === 'critical' ? (
-                          <span className="inline-flex items-center text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
-                            Perlu Pembinaan
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                            Perlu Perhatian
-                          </span>
-                        )}
+                        <span className={cn(
+                          "px-2.5 py-1 rounded-full text-xs font-semibold",
+                          civitas.category === 'perfect' && "bg-emerald-100 text-emerald-800 border border-emerald-200",
+                          civitas.category === 'good' && "bg-blue-50 text-blue-700 border border-blue-200",
+                          civitas.category === 'warning' && "bg-amber-100 text-amber-800 border border-amber-200",
+                          civitas.category === 'critical' && "bg-rose-100 text-rose-800 border border-rose-200"
+                        )}>
+                          {civitas.category === 'perfect' && 'Hadir Penuh'}
+                          {civitas.category === 'good' && 'Disiplin'}
+                          {civitas.category === 'warning' && 'Perlu Perhatian'}
+                          {civitas.category === 'critical' && 'Perlu Pembinaan'}
+                        </span>
                       </td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="px-5 py-4 text-center">
                         <button
-                          onClick={() => setSelectedCivitasDetail({
-                            civitas,
-                            attendedRecords: civitas.records,
-                            attendedCount: civitas.physicalAttendedCount,
-                            absentCount: civitas.absentUnits,
-                            totalWeeks: civitas.totalUnits,
-                            attendedWeeks: civitas.attendedUnits,
-                            absenceRate: civitas.absenceRate,
-                            weeklyBreakdown: civitas.weeklyBreakdown
-                          })}
-                          className="px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-300 rounded-lg transition-colors"
+                          onClick={() => {
+                            setSelectedCivitasDetail({
+                              civitas,
+                              attendedRecords: civitas.records,
+                              attendedCount: civitas.physicalAttendedCount,
+                              absentCount: civitas.absentUnits,
+                              totalWeeks: civitas.totalUnits,
+                              attendedWeeks: civitas.attendedUnits,
+                              absenceRate: civitas.absenceRate,
+                              weeklyBreakdown: civitas.weeklyBreakdown
+                            });
+                          }}
+                          className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors"
                         >
                           Rincian
                         </button>
@@ -1075,14 +1636,26 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
         </div>
       </div>
 
-      {/* 4. Modal Detail Presensi & Rincian Tiap Pekan */}
+      {/* 5. Modal Detail Presensi & Rincian Tiap Pekan */}
       {selectedCivitasDetail && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div>
                 <h3 className="font-bold text-slate-800 text-base">Rincian Rekap Ketidakhadiran</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{selectedCivitasDetail.civitas.name} ({selectedCivitasDetail.civitas.gender})</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-slate-600 font-medium">
+                    {selectedCivitasDetail.civitas.name} ({selectedCivitasDetail.civitas.gender})
+                  </p>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-semibold border",
+                    selectedCivitasDetail.civitas.employeeType === 'Bagian Umum'
+                      ? "bg-amber-100 text-amber-800 border-amber-300"
+                      : "bg-indigo-100 text-indigo-800 border-indigo-300"
+                  )}>
+                    {selectedCivitasDetail.civitas.employeeType}
+                  </span>
+                </div>
               </div>
               <button 
                 onClick={() => setSelectedCivitasDetail(null)} 
@@ -1114,9 +1687,9 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
                     <CalendarCheck size={14} className="text-emerald-600" />
-                    Status Kehadiran per Pekan Kajian
+                    Status Kehadiran Pekan per Pekan (Min 1x / Pekan)
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                     {selectedCivitasDetail.weeklyBreakdown.map((wb) => (
                       <div 
                         key={wb.week.weekNumber} 
@@ -1188,10 +1761,10 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                               {format(parseISO(r.date), 'EEEE, dd MMMM yyyy', { locale: id })}
                             </div>
                             <div className="text-slate-500 mt-0.5">
-                              {schedule ? `${schedule.dayName}: ${schedule.ustadz} (${schedule.kitab})` : r.scheduleId === 'khusus_19sept2026' ? 'Kajian Khusus Guru & Civitas' : r.scheduleId}
+                              {schedule ? `${schedule.ustadz} - ${schedule.kitab}` : r.scheduleId}
                             </div>
                           </div>
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md font-semibold text-[11px]">
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                             Hadir
                           </span>
                         </div>
@@ -1202,13 +1775,10 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
               </div>
             </div>
 
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
-              <span className="text-xs text-slate-500">
-                Tingkat Absen: <strong>{selectedCivitasDetail.absenceRate.toFixed(1)}%</strong>
-              </span>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setSelectedCivitasDetail(null)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition"
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
               >
                 Tutup
               </button>

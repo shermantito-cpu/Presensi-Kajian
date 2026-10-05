@@ -1,10 +1,36 @@
 export type Gender = 'Ikhwan' | 'Akhwat';
+export type EmployeeType = 'Bagian Umum' | 'Pendidik dan Tenaga Kependidikan';
 
 export interface Civitas {
   id: string;
   name: string;
   gender: Gender;
+  employeeType: EmployeeType;
 }
+
+export const BAGIAN_UMUM_NAMES = [
+  'Agus Arwanto',
+  'Alvin',
+  'Mat Akhir',
+  'Arif Hibatullah',
+  'Kusdani',
+  'Okti Napitupulu',
+  'Sapardi',
+  'Ardyan Sananda',
+  'Aziz Nopriansyah',
+  'Gusti Wijaya Santri',
+  'Herman Siswanto',
+  'Noval Eka Wijaya',
+  'Oktabri Selvin',
+  'Taufik Hidayat Usshohe',
+  'Wahyu'
+];
+
+export const getEmployeeType = (name: string): EmployeeType => {
+  const cleanName = name.trim().toLowerCase();
+  const isBagianUmum = BAGIAN_UMUM_NAMES.some(n => n.trim().toLowerCase() === cleanName);
+  return isBagianUmum ? 'Bagian Umum' : 'Pendidik dan Tenaga Kependidikan';
+};
 
 export const ikhwanList: { id: string; name: string }[] = [
   { id: 'ikhwan-1', name: 'Rahmat Dipuro' },
@@ -69,6 +95,6 @@ export const ikhwanNames = ikhwanList.map(item => item.name);
 export const akhwatNames = akhwatList.map(item => item.name);
 
 export const civitasData: Civitas[] = [
-  ...ikhwanList.map(item => ({ ...item, gender: 'Ikhwan' as Gender })),
-  ...akhwatList.map(item => ({ ...item, gender: 'Akhwat' as Gender }))
+  ...ikhwanList.map(item => ({ ...item, gender: 'Ikhwan' as Gender, employeeType: getEmployeeType(item.name) })),
+  ...akhwatList.map(item => ({ ...item, gender: 'Akhwat' as Gender, employeeType: getEmployeeType(item.name) }))
 ].sort((a, b) => a.name.localeCompare(b.name));
