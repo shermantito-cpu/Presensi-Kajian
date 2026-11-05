@@ -67,6 +67,10 @@ export default function Home() {
               <p className="text-slate-500 text-sm leading-relaxed">
                 Sistem Presensi Kajian khusus untuk Civitas, Guru, & Pegawai Ponpes Al-Madina Prabumulih.
               </p>
+              <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                <span>Batas Presensi: Ditutup Setiap 17:30 WIB</span>
+              </div>
             </div>
           </div>
 

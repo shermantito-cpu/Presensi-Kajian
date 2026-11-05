@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, BellRing, Hourglass, CalendarClock, X, History, Lock } from 'lucide-react';
+import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, Hourglass, X, History, Lock } from 'lucide-react';
 import { civitasData, Gender } from '../data/civitas';
 import { schedules, Schedule } from '../data/schedules';
 import { useAttendanceStore, useSettingsStore } from '../store/useAppStore';
@@ -17,7 +17,6 @@ export default function PresensiKhusus() {
   const [selectedCivitasId, setSelectedCivitasId] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   
-  const [showInfo, setShowInfo] = useState(true);
   const [showLupaModal, setShowLupaModal] = useState(false);
   
   const [lupaCivitasId, setLupaCivitasId] = useState('');
@@ -234,44 +233,6 @@ export default function PresensiKhusus() {
           )}
         </div>
       </div>
-
-      {/* Info Pop Up Modal */}
-      {showInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-slate-100">
-            <button 
-              onClick={() => setShowInfo(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
-            >
-              <X size={20} />
-            </button>
-            <div className="p-6">
-              <div className="flex items-center text-emerald-600 mb-2">
-                <div className="bg-emerald-100 p-2.5 rounded-xl mr-4 shadow-sm">
-                  <BellRing size={24} className="text-emerald-700" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 tracking-tight">Pengingat</h3>
-              </div>
-              <div className="space-y-4 mt-6">
-                <div className="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <Hourglass className="shrink-0 text-emerald-500 mt-0.5 mr-3" size={20} />
-                  <p className="text-slate-700 leading-relaxed text-sm">Batas Pengisian Presensi Kajian sampai pukul 00.00 WIB.</p>
-                </div>
-                <div className="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <CalendarClock className="shrink-0 text-emerald-500 mt-0.5 mr-3" size={20} />
-                  <p className="text-slate-700 leading-relaxed text-sm">Jika terlupa mengisi presensi atau ingin mengisi presensi pada pekan sebelumnya, silahkan klik tombol Lupa Presensi.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowInfo(false)}
-                className="w-full mt-8 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold py-3 rounded-xl transition-all shadow-sm"
-              >
-                Mengerti
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Lupa Presensi Modal */}
       {showLupaModal && (

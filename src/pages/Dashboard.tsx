@@ -221,8 +221,15 @@ export default function Dashboard() {
         {/* Toggle Kajian Status */}
         <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-base sm:text-lg font-bold text-slate-800">Status Akses Presensi</h3>
-            <p className="text-sm text-slate-500 mt-0.5">Kontrol apakah form presensi saat ini dibuka untuk santri/civitas atau diliburkan.</p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-bold text-slate-800">Status Akses Presensi</h3>
+              <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-full">
+                Tutup Setiap 17:30 WIB
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Kontrol apakah form presensi dibuka atau diliburkan. Batas pengisian presensi otomatis ditutup setiap pukul 17:30 WIB (bukan 00:00 tengah malam).
+            </p>
           </div>
           <button
             onClick={() => setKajianStatus(!isKajianOpen)}

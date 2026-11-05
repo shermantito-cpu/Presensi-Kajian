@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, BellRing, Hourglass, CalendarClock, X, History, Lock } from 'lucide-react';
+import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, Hourglass, X, History, Lock } from 'lucide-react';
 import { civitasData, Gender } from '../data/civitas';
-import { schedules, Schedule } from '../data/schedules';
+import { schedules, Schedule, getActiveKajianSession, ActiveSessionResult } from '../data/schedules';
 import { useAttendanceStore, useSettingsStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
 
@@ -15,10 +15,9 @@ export default function Presensi() {
   
   const [selectedGender, setSelectedGender] = useState<Gender | null>(null);
   const [selectedCivitasId, setSelectedCivitasId] = useState('');
-  const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(null);
+  const [activeSession, setActiveSession] = useState<ActiveSessionResult>(() => getActiveKajianSession());
   const [isSuccess, setIsSuccess] = useState(false);
   
-  const [showInfo, setShowInfo] = useState(true);
   const [showLupaModal, setShowLupaModal] = useState(false);
   
   const [lupaCivitasId, setLupaCivitasId] = useState('');
@@ -26,23 +25,28 @@ export default function Presensi() {
   const [lupaScheduleId, setLupaScheduleId] = useState('');
   const [isLupaSuccess, setIsLupaSuccess] = useState(false);
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const currentDayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday...
-
+  // Periodically refresh active session (catches 17:30 cutoff automatically)
   useEffect(() => {
-    // Find if there is a schedule today
-    const schedule = schedules.find(s => s.day === currentDayIndex);
-    setCurrentSchedule(schedule || null);
-  }, [currentDayIndex]);
+    const updateSession = () => {
+      setActiveSession(getActiveKajianSession());
+    };
+    updateSession();
+    const interval = setInterval(updateSession, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  const currentSchedule = activeSession.schedule;
+  const sessionDateStr = activeSession.sessionDateStr;
+  const todayCalendarStr = format(new Date(), 'yyyy-MM-dd');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCivitasId || !currentSchedule) return;
+    if (!selectedCivitasId || !currentSchedule || !activeSession.isOpen || !sessionDateStr) return;
 
     addRecord({
       civitasId: selectedCivitasId,
       scheduleId: currentSchedule.id,
-      date: todayStr,
+      date: sessionDateStr,
       status: 'approved',
     });
     
@@ -76,9 +80,9 @@ export default function Presensi() {
 
   const filteredCivitas = civitasData.filter(c => c.gender === selectedGender);
 
-  // Check if they already attended today
-  const hasAttendedToday = selectedCivitasId 
-    ? records.some(r => r.civitasId === selectedCivitasId && r.date === todayStr && r.scheduleId === currentSchedule?.id)
+  // Check if they already attended this active session
+  const hasAttendedToday = selectedCivitasId && sessionDateStr && currentSchedule
+    ? records.some(r => r.civitasId === selectedCivitasId && r.date === sessionDateStr && r.scheduleId === currentSchedule.id)
     : false;
 
   return (
@@ -128,23 +132,59 @@ export default function Presensi() {
                 </p>
               </div>
             </div>
-          ) : !currentSchedule ? (
-            <div className="bg-orange-50 text-orange-800 p-6 rounded-xl border border-orange-200 text-center">
-              <CalendarIcon className="mx-auto h-12 w-12 text-orange-400 mb-4" />
-              <h3 className="text-lg font-semibold">Tidak Ada Kajian Hari Ini</h3>
-              <p className="mt-2 text-orange-700/80">Kajian rutin dilaksanakan pada hari Senin hingga Jum'at Ba'da Magrib.</p>
+          ) : !activeSession.isOpen || !currentSchedule ? (
+            <div className="bg-amber-50 text-amber-900 p-6 sm:p-8 rounded-2xl border border-amber-200 text-center space-y-4">
+              <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto text-amber-700">
+                <Hourglass size={32} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-amber-950">Presensi Kajian Saat Ini Ditutup</h3>
+                <p className="mt-2 text-sm text-amber-800 leading-relaxed max-w-md mx-auto">
+                  Jadwal penutupan presensi setiap sesi kajian adalah <strong>setiap pukul 17:30 WIB</strong> (bukan pukul 00:00 tengah malam).
+                </p>
+                <p className="mt-1 text-xs text-amber-700">
+                  Presensi sesi kajian rutin berikutnya akan dibuka pada hari <strong>Senin pukul 17:30 WIB</strong>.
+                </p>
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLupaModal(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shadow-sm transition"
+                >
+                  <History size={16} />
+                  <span>Ajukan Lupa Presensi Sesi Sebelumnya</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-8">
               {/* Schedule Info Box */}
-              <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between">
-                <div>
-                  <span className="text-emerald-800 font-semibold text-lg block">{currentSchedule.ustadz}</span>
-                  <span className="text-emerald-600 font-medium">{currentSchedule.kitab}</span>
+              <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-100 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 bg-emerald-600 text-white text-xs font-bold rounded-lg">
+                      Sesi Kajian {currentSchedule.dayName}
+                    </span>
+                    <span className="text-xs font-medium text-emerald-800">
+                      {activeSession.sessionDate ? format(activeSession.sessionDate, 'dd MMMM yyyy', { locale: id }) : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full">
+                    <Hourglass size={13} className="text-rose-600 shrink-0" />
+                    <span>Ditutup: {activeSession.closingTimeStr}</span>
+                  </div>
                 </div>
-                <div className="mt-3 sm:mt-0 flex items-center text-emerald-700 bg-emerald-100/50 px-4 py-2 rounded-lg w-fit">
-                  <CalendarIcon size={18} className="mr-2" />
-                  {currentSchedule.time}
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                  <div>
+                    <span className="text-emerald-950 font-bold text-lg block">{currentSchedule.ustadz}</span>
+                    <span className="text-emerald-700 font-medium text-sm">{currentSchedule.kitab}</span>
+                  </div>
+                  <div className="flex items-center text-emerald-800 bg-white/80 border border-emerald-200 px-3 py-1.5 rounded-xl w-fit text-xs font-semibold">
+                    <CalendarIcon size={15} className="mr-1.5 text-emerald-600" />
+                    Mulai {currentSchedule.time} Ba'da Magrib
+                  </div>
                 </div>
               </div>
 
@@ -240,44 +280,6 @@ export default function Presensi() {
         </div>
       </div>
 
-      {/* Info Pop Up Modal */}
-      {showInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative border border-slate-100">
-            <button 
-              onClick={() => setShowInfo(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition-colors"
-            >
-              <X size={20} />
-            </button>
-            <div className="p-6">
-              <div className="flex items-center text-emerald-600 mb-2">
-                <div className="bg-emerald-100 p-2.5 rounded-xl mr-4 shadow-sm">
-                  <BellRing size={24} className="text-emerald-700" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 tracking-tight">Pengingat</h3>
-              </div>
-              <div className="space-y-4 mt-6">
-                <div className="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <Hourglass className="shrink-0 text-emerald-500 mt-0.5 mr-3" size={20} />
-                  <p className="text-slate-700 leading-relaxed text-sm">Batas Pengisian Presensi Kajian sampai pukul 00.00 WIB.</p>
-                </div>
-                <div className="flex items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <CalendarClock className="shrink-0 text-emerald-500 mt-0.5 mr-3" size={20} />
-                  <p className="text-slate-700 leading-relaxed text-sm">Jika terlupa mengisi presensi atau ingin mengisi presensi pada pekan sebelumnya, silahkan klik tombol Lupa Presensi.</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowInfo(false)}
-                className="w-full mt-8 bg-emerald-600 text-white hover:bg-emerald-700 font-semibold py-3 rounded-xl transition-all shadow-sm"
-              >
-                Mengerti
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Lupa Presensi Modal */}
       {showLupaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
@@ -312,7 +314,7 @@ export default function Presensi() {
                   type="date"
                   value={lupaDate}
                   onChange={(e) => setLupaDate(e.target.value)}
-                  max={todayStr}
+                  max={todayCalendarStr}
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow"
                   required
                 />
