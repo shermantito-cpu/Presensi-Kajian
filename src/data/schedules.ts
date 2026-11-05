@@ -45,7 +45,7 @@ export const schedules: Schedule[] = [
     day: 5,
     dayName: "Jum'at",
     ustadz: 'Ustadz Vega Ilyasa',
-    kitab: 'Kitab Az-Zuhd War Raqaiq',
+    kitab: 'Kitab Arbain Nawawi',
     time: '18:30',
   }
 ];

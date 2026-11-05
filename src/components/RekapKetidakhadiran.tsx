@@ -909,7 +909,7 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
                     <Layers className="text-emerald-600 shrink-0 mt-0.5" size={16} />
                     <div>
                       <div className="font-bold text-slate-800">Semua Jenis Pegawai (Lengkap)</div>
-                      <div className="text-[11px] text-slate-500">Dengan kolom Jenis Pegawai (51 civitas)</div>
+                      <div className="text-[11px] text-slate-500">Dengan kolom Jenis Pegawai ({overallStats.totalCivitas} civitas)</div>
                     </div>
                   </button>
                   <button

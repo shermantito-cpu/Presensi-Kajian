@@ -20,7 +20,6 @@ export const BAGIAN_UMUM_NAMES = [
   'Aziz Nopriansyah',
   'Gusti Wijaya Santri',
   'Herman Siswanto',
-  'Noval Eka Wijaya',
   'Oktabri Selvin',
   'Taufik Hidayat Usshohe',
   'Wahyu'
@@ -59,7 +58,7 @@ export const ikhwanList: { id: string; name: string }[] = [
   { id: 'ikhwan-24', name: 'Sapardi' },
   { id: 'ikhwan-25', name: 'Herman Siswanto' },
   { id: 'ikhwan-26', name: 'Wahyu' },
-  { id: 'ikhwan-27', name: 'Noval Eka Wijaya' },
+  // ikhwan-27: Noval Eka Wijaya (Dihapus)
   { id: 'ikhwan-28', name: 'Arif Hibatullah' },
   { id: 'ikhwan-29', name: 'Ardyan Sananda' },
   { id: 'ikhwan-30', name: 'Aziz Nopriansyah' },
@@ -73,7 +72,10 @@ export const ikhwanList: { id: string; name: string }[] = [
   { id: 'ikhwan-38', name: 'Ommar Sharief' },
   { id: 'ikhwan-39', name: 'M. Ilham' },
   { id: 'ikhwan-40', name: 'Muhammad Rimbawan' },
-  { id: 'ikhwan-41', name: 'Rizki Saputra' }
+  { id: 'ikhwan-41', name: 'Rizki Saputra' },
+  { id: 'ikhwan-42', name: 'Muri' },
+  { id: 'ikhwan-43', name: 'Bagas' },
+  { id: 'ikhwan-44', name: 'Parnoji' }
 ];
 
 export const akhwatList: { id: string; name: string }[] = [

@@ -189,7 +189,7 @@ export default function PresensiKhusus() {
                       className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                       required
                     >
-                      <option value="">-- Pilih Nama Anda --</option>
+                      <option value="">-- Pilih Nama --</option>
                       {filteredCivitas.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
