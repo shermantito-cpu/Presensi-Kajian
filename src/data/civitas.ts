@@ -100,3 +100,16 @@ export const civitasData: Civitas[] = [
   ...ikhwanList.map(item => ({ ...item, gender: 'Ikhwan' as Gender, employeeType: getEmployeeType(item.name) })),
   ...akhwatList.map(item => ({ ...item, gender: 'Akhwat' as Gender, employeeType: getEmployeeType(item.name) }))
 ].sort((a, b) => a.name.localeCompare(b.name));
+
+// Tambahan civitas khusus untuk menu Kajian Khusus Civitas
+export const civitasKhususOnlyList: Civitas[] = [
+  { id: 'khusus-ikhwan-1', name: 'Arif Wicaksono', gender: 'Ikhwan', employeeType: 'Pendidik dan Tenaga Kependidikan' },
+  { id: 'khusus-ikhwan-2', name: 'Hidayatullah', gender: 'Ikhwan', employeeType: 'Pendidik dan Tenaga Kependidikan' },
+  { id: 'khusus-ikhwan-3', name: 'Vega Ilyasa', gender: 'Ikhwan', employeeType: 'Pendidik dan Tenaga Kependidikan' }
+];
+
+export const civitasKhususData: Civitas[] = [
+  ...civitasData,
+  ...civitasKhususOnlyList
+].sort((a, b) => a.name.localeCompare(b.name));
+

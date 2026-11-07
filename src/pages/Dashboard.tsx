@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { civitasData, Gender, Civitas } from '../data/civitas';
+import { civitasData, civitasKhususData, Gender, Civitas } from '../data/civitas';
 import { schedules } from '../data/schedules';
 import { useAttendanceStore, useAuth, useSettingsStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
@@ -133,7 +133,8 @@ export default function Dashboard() {
     return s ? `${s.dayName} - ${s.ustadz} (${s.kitab})` : scheduleId;
   };
 
-  const civitasList = useMemo(() => civitasData.filter(c => c.gender === activeTab), [activeTab]);
+  const currentCivitasSource = viewMode === 'khusus' ? civitasKhususData : civitasData;
+  const civitasList = useMemo(() => currentCivitasSource.filter(c => c.gender === activeTab), [activeTab, currentCivitasSource]);
 
   const minRequirement = viewMode === 'monthly' ? 4 : 1;
 
@@ -186,7 +187,8 @@ export default function Dashboard() {
 
     // Ikhwan Table
     doc.text('Kajian Ikhwan', 14, 40);
-    const ikhwanRecap = civitasData.filter(c => c.gender === 'Ikhwan').map(c => {
+    const ikhwanSource = viewMode === 'khusus' ? civitasKhususData.filter(c => c.gender === 'Ikhwan') : civitasData.filter(c => c.gender === 'Ikhwan');
+    const ikhwanRecap = ikhwanSource.map(c => {
       const count = filteredRecords.filter(r => r.civitasId === c.id).length;
       return [c.name, c.employeeType === 'Bagian Umum' ? 'Bagian Umum' : 'Pendidik & PTK', count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
     });
@@ -201,7 +203,8 @@ export default function Dashboard() {
 
     // Akhwat Table
     doc.text('Kajian Akhwat', 14, (doc as any).lastAutoTable.finalY + 14);
-    const akhwatRecap = civitasData.filter(c => c.gender === 'Akhwat').map(c => {
+    const akhwatSource = viewMode === 'khusus' ? civitasKhususData.filter(c => c.gender === 'Akhwat') : civitasData.filter(c => c.gender === 'Akhwat');
+    const akhwatRecap = akhwatSource.map(c => {
       const count = filteredRecords.filter(r => r.civitasId === c.id).length;
       return [c.name, c.employeeType === 'Bagian Umum' ? 'Bagian Umum' : 'Pendidik & PTK', count > 0 ? count.toString() : 'Belum Hadir', count >= minRequirement ? 'Memenuhi' : 'Tidak Memenuhi'];
     });
@@ -490,7 +493,7 @@ export default function Dashboard() {
                     </thead>
                     <tbody className="divide-y divide-blue-100">
                       {allPendingRecords.map(record => {
-                        const civitas = civitasData.find(c => c.id === record.civitasId);
+                        const civitas = civitasKhususData.find(c => c.id === record.civitasId) || civitasData.find(c => c.id === record.civitasId);
                         const schedule = schedules.find(s => s.id === record.scheduleId);
                         if (!civitas) return null;
                         return (

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { CheckCircle2, User, Users, Calendar as CalendarIcon, ArrowLeft, Hourglass, X, History, Lock } from 'lucide-react';
-import { civitasData, Gender } from '../data/civitas';
+import { civitasKhususData, Gender } from '../data/civitas';
 import { schedules, Schedule } from '../data/schedules';
 import { useAttendanceStore, useSettingsStore } from '../store/useAppStore';
 import { cn } from '../lib/utils';
@@ -98,7 +98,7 @@ export default function PresensiKhusus() {
     }, 2000);
   };
 
-  const filteredCivitas = civitasData.filter(c => c.gender === selectedGender);
+  const filteredCivitas = civitasKhususData.filter(c => c.gender === selectedGender);
 
   // Check if they already attended this special event
   const hasAttendedToday = selectedCivitasId 
@@ -308,7 +308,7 @@ export default function PresensiKhusus() {
                   required
                 >
                   <option value="">-- Pilih Nama Civitas --</option>
-                  {civitasData.map(c => (
+                  {civitasKhususData.map(c => (
                     <option key={c.id} value={c.id}>{c.name} ({c.gender})</option>
                   ))}
                 </select>
