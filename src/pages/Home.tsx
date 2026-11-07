@@ -95,9 +95,9 @@ export default function Home() {
               </div>
             </div>
             <div onClick={() => navigate('/presensi-khusus')} className="cursor-pointer flex-1">
-              <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-blue-700 transition-colors">Kajian Khusus Guru/Civitas</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-blue-700 transition-colors">Kajian Khusus Civitas</h3>
               <p className="text-slate-500 text-sm leading-relaxed">
-                Sistem presensi kajian khusus Guru/Civitas (Sabtu, 19 September 2026).
+                Kajian Khusus (Sabtu, 7 November 2026): "Berusaha Menjadi Pegawai Teladan" bersama Ustadz Abdurrahman Al-Amiry (Ba'da Zuhur s.d Selesai).
               </p>
             </div>
           </div>

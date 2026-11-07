@@ -161,10 +161,12 @@ export default function RekapKetidakhadiran({ records }: RekapKetidakhadiranProp
     }
   };
 
-  // Filter records within the selected date range
+  // Filter records within the selected date range (Kajian Rutin Pekanan, exclude Kajian Khusus)
   const recordsInPeriod = useMemo(() => {
     return records.filter(r => {
       if (r.status === 'pending' || !r.date) return false;
+      // Kecualikan kajian khusus agar rekap ketidakhadiran murni menghitung kajian rutin civitas
+      if (typeof r.scheduleId === 'string' && r.scheduleId.startsWith('khusus')) return false;
       return r.date >= startDateStr && r.date <= endDateStr;
     });
   }, [records, startDateStr, endDateStr]);

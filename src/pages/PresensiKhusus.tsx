@@ -20,20 +20,41 @@ export default function PresensiKhusus() {
   const [showLupaModal, setShowLupaModal] = useState(false);
   
   const [lupaCivitasId, setLupaCivitasId] = useState('');
-  const [lupaDate, setLupaDate] = useState('');
-  const [lupaScheduleId, setLupaScheduleId] = useState('');
+  const [lupaDate, setLupaDate] = useState('2026-11-07');
+  const [lupaScheduleId, setLupaScheduleId] = useState('khusus_7nov2026');
   const [isLupaSuccess, setIsLupaSuccess] = useState(false);
 
-  const now = new Date();
-  const todayStr = format(now, 'yyyy-MM-dd');
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const todayStr = format(currentTime, 'yyyy-MM-dd');
   
-  const khususScheduleId = 'khusus_19sept2026';
+  const khususScheduleId = 'khusus_7nov2026';
   
   const isKhususTimeOpen = () => {
-    // September is 8 (0-indexed)
-    const startDate = new Date(2026, 8, 19, 7, 0, 0); // 19 Sept 2026 07:00:00
-    const endDate = new Date(2026, 8, 19, 23, 59, 59); // 19 Sept 2026 23:59:59
-    return now >= startDate && now <= endDate;
+    // 7 November 2026 (Month index 10 in JS: 0=Jan, 10=Nov)
+    // Dibuka hari Sabtu, 7 November 2026 pukul 11.30 WIB sampai pukul 00.00 WIB (tertutup otomatis)
+    const startDateLocal = new Date(2026, 10, 7, 11, 30, 0);
+    const endDateLocal = new Date(2026, 10, 7, 23, 59, 59, 999);
+    const isLocalOpen = currentTime >= startDateLocal && currentTime <= endDateLocal;
+
+    let isWibOpen = false;
+    try {
+      const wibDate = new Date(currentTime.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+      const startDateWib = new Date(2026, 10, 7, 11, 30, 0);
+      const endDateWib = new Date(2026, 10, 7, 23, 59, 59, 999);
+      isWibOpen = wibDate >= startDateWib && wibDate <= endDateWib;
+    } catch {
+      // fallback
+    }
+
+    return isLocalOpen || isWibOpen;
   };
   
   const isOpen = isKajianOpen && isKhususTimeOpen();
@@ -45,7 +66,7 @@ export default function PresensiKhusus() {
     addRecord({
       civitasId: selectedCivitasId,
       scheduleId: khususScheduleId,
-      date: '2026-09-19', // fixed date for this special record
+      date: '2026-11-07',
       status: 'approved',
     });
     
@@ -106,7 +127,7 @@ export default function PresensiKhusus() {
               />
             </div>
             <h1 className="text-3xl font-bold text-slate-800">Form Presensi Kajian Khusus</h1>
-            <p className="text-slate-500 mt-2">Sabtu, 19 September 2026</p>
+            <p className="text-slate-500 mt-2 font-medium">Sabtu, 7 November 2026</p>
           </div>
 
           {!isOpen ? (
@@ -116,29 +137,59 @@ export default function PresensiKhusus() {
                 <Lock className="h-8 w-8 text-slate-400" />
               </div>
               <h3 className="text-2xl font-bold text-slate-800 mb-2">
-                Kajian Khusus
+                Kajian Khusus Civitas
               </h3>
-              <div className="inline-block bg-rose-100 text-rose-700 px-4 py-1.5 rounded-full font-semibold text-sm mb-6">
-                Belum Dibuka / Ditutup
+              <div className="inline-block bg-rose-100 text-rose-700 px-4 py-1.5 rounded-full font-semibold text-sm mb-4">
+                Presensi Ditutup / Belum Dibuka
+              </div>
+
+              {/* Kajian Detail Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-6 text-left max-w-lg mx-auto">
+                <div className="text-xs uppercase font-bold tracking-wider text-emerald-700 mb-1">Judul Kajian</div>
+                <div className="text-lg font-bold text-slate-800 mb-3">Berusaha Menjadi Pegawai Teladan</div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm pt-3 border-t border-slate-200">
+                  <div>
+                    <span className="text-xs text-slate-500 block">Pemateri:</span>
+                    <span className="font-semibold text-slate-700">Ustadz Abdurrahman Al-Amiry</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-500 block">Waktu Pelaksanaan:</span>
+                    <span className="font-semibold text-slate-700">Ba'da Zuhur s.d Selesai</span>
+                  </div>
+                </div>
               </div>
               
               <div className="space-y-3 text-slate-600 max-w-md mx-auto">
-                <p className="leading-relaxed">
-                  Presensi kajian khusus ini hanya dibuka pada hari <strong>Sabtu, 19 September 2026</strong> mulai pukul 07.00 hingga selesai.
+                <p className="text-sm leading-relaxed">
+                  Presensi kajian khusus ini dibuka pada hari <strong>Sabtu, 7 November 2026</strong> mulai pukul <strong>11.30 WIB</strong> sampai pukul <strong>00.00 WIB</strong>.
                 </p>
               </div>
             </div>
           ) : (
             <div className="space-y-8">
               {/* Schedule Info Box */}
-              <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between">
-                <div>
-                  <span className="text-emerald-800 font-semibold text-lg block">Kajian Khusus Guru/Civitas</span>
-                  <span className="text-emerald-600 font-medium">Sabtu, 19 September 2026</span>
-                </div>
-                <div className="mt-3 sm:mt-0 flex items-center text-emerald-700 bg-emerald-100/50 px-4 py-2 rounded-lg w-fit">
-                  <CalendarIcon size={18} className="mr-2" />
-                  07:00 - Selesai
+              <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 p-5 rounded-2xl shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-xs font-semibold mb-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Presensi Dibuka: 11.30 - 00.00 WIB
+                    </div>
+                    <h2 className="text-xl font-bold text-emerald-950">Berusaha Menjadi Pegawai Teladan</h2>
+                    <p className="text-emerald-700 font-medium text-sm mt-0.5">
+                      Bersama <strong className="text-emerald-900">Ustadz Abdurrahman Al-Amiry</strong>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Kajian Khusus Civitas • Sabtu, 7 November 2026
+                    </p>
+                  </div>
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 pt-3 sm:pt-0 border-emerald-200/60">
+                    <div className="flex items-center text-emerald-800 bg-white/80 border border-emerald-200 px-3 py-1.5 rounded-xl font-medium text-xs shadow-xs">
+                      <CalendarIcon size={14} className="mr-1.5 text-emerald-600" />
+                      Ba'da Zuhur s.d Selesai
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -268,24 +319,15 @@ export default function PresensiKhusus() {
                   type="date"
                   value={lupaDate}
                   onChange={(e) => setLupaDate(e.target.value)}
-                  max={todayStr}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-slate-50"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Jadwal Kajian yang Dihadiri</label>
-                <select
-                  value={lupaScheduleId}
-                  onChange={(e) => setLupaScheduleId(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-white"
-                  required
-                >
-                  <option value="">-- Pilih Jadwal Kajian --</option>
-                  {schedules.map(s => (
-                    <option key={s.id} value={s.id}>{s.dayName} - {s.ustadz} ({s.kitab})</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Kajian Khusus yang Dihadiri</label>
+                <div className="px-4 py-2.5 border border-emerald-200 bg-emerald-50/70 rounded-xl text-sm font-semibold text-emerald-900">
+                  Kajian Khusus: Berusaha Menjadi Pegawai Teladan (Sabtu, 7 Nov 2026)
+                </div>
               </div>
 
               {isLupaSuccess && (

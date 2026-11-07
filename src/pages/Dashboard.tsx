@@ -37,6 +37,7 @@ export default function Dashboard() {
 
   const [activeTab, setActiveTab] = useState<Gender>('Ikhwan');
   const [viewMode, setViewMode] = useState<'weekly' | 'monthly' | 'khusus' | 'custom'>('weekly');
+  const [selectedKhususId, setSelectedKhususId] = useState<'khusus_7nov2026' | 'khusus_19sept2026' | 'all_khusus'>('khusus_7nov2026');
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -78,25 +79,59 @@ export default function Dashboard() {
     return records.filter(r => {
       if (r.status === 'pending') return false;
       
+      const isKhusus = typeof r.scheduleId === 'string' && r.scheduleId.startsWith('khusus');
+
       if (viewMode === 'khusus') {
-        return r.scheduleId === 'khusus_19sept2026';
+        // HANYA merekap data presensi kajian khusus saja!
+        // Sama sekali tidak mencakup dan tidak memasukkan data presensi rutin kajian civitas (Senin-Jumat)
+        if (!isKhusus) return false;
+
+        if (selectedKhususId === 'all_khusus') return true;
+        return r.scheduleId === selectedKhususId;
       }
       
+      // Pada mode presensi rutin (weekly, monthly), kecualikan data kajian khusus agar terpisah murni
+      if (viewMode === 'weekly') {
+        if (isKhusus) return false;
+        const d = new Date(r.date);
+        return isWithinInterval(d, { start: weekStart, end: weekEnd });
+      }
+
+      if (viewMode === 'monthly') {
+        if (isKhusus) return false;
+        const d = new Date(r.date);
+        return isWithinInterval(d, { start: monthStart, end: monthEnd });
+      }
+
       if (viewMode === 'custom') {
         if (!r.date) return false;
         return r.date >= customStartDate && r.date <= customEndDate;
       }
 
-      const d = new Date(r.date);
-      if (viewMode === 'weekly') {
-        return isWithinInterval(d, { start: weekStart, end: weekEnd });
-      } else {
-        return isWithinInterval(d, { start: monthStart, end: monthEnd });
-      }
+      return false;
     });
-  }, [records, viewMode, weekStart, weekEnd, monthStart, monthEnd, customStartDate, customEndDate]);
+  }, [records, viewMode, selectedKhususId, weekStart, weekEnd, monthStart, monthEnd, customStartDate, customEndDate]);
   
-  const allPendingRecords = useMemo(() => records.filter(r => r.status === 'pending'), [records]);
+  const allPendingRecords = useMemo(() => {
+    return records.filter(r => {
+      if (r.status !== 'pending') return false;
+      const isKhusus = typeof r.scheduleId === 'string' && r.scheduleId.startsWith('khusus');
+      if (viewMode === 'khusus') {
+        return isKhusus;
+      }
+      return !isKhusus;
+    });
+  }, [records, viewMode]);
+
+  const totalAllPendingRecords = useMemo(() => records.filter(r => r.status === 'pending'), [records]);
+
+  const getScheduleLabel = (scheduleId: string) => {
+    if (scheduleId === 'khusus_7nov2026') return 'Kajian Khusus: Berusaha Menjadi Pegawai Teladan (Sabtu, 7 Nov 2026)';
+    if (scheduleId === 'khusus_19sept2026') return 'Kajian Khusus: 19 Sept 2026';
+    if (scheduleId && scheduleId.startsWith('khusus')) return 'Kajian Khusus Civitas';
+    const s = schedules.find(item => item.id === scheduleId);
+    return s ? `${s.dayName} - ${s.ustadz} (${s.kitab})` : scheduleId;
+  };
 
   const civitasList = useMemo(() => civitasData.filter(c => c.gender === activeTab), [activeTab]);
 
@@ -132,7 +167,17 @@ export default function Dashboard() {
     } else if (viewMode === 'monthly') {
       doc.text(`Bulan ${format(monthStart, 'MMMM yyyy', { locale: id })}`, 14, 30);
     } else if (viewMode === 'khusus') {
-      doc.text(`Kajian Khusus: Sabtu, 19 September 2026`, 14, 30);
+      const eventLabel = selectedKhususId === 'khusus_7nov2026'
+        ? 'Kajian Khusus: Sabtu, 7 November 2026 ("Berusaha Menjadi Pegawai Teladan")'
+        : selectedKhususId === 'khusus_19sept2026'
+        ? 'Kajian Khusus: Sabtu, 19 September 2026'
+        : 'Seluruh Arsip Kajian Khusus Civitas';
+      doc.text(eventLabel, 14, 30);
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text('(Hanya merekap presensi kajian khusus - terpisah dari kajian rutin civitas)', 14, 35);
+      doc.setFontSize(11);
+      doc.setTextColor(15, 23, 42);
     } else {
       doc.text(`Periode: ${format(new Date(customStartDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(customEndDate), 'dd MMM yyyy', { locale: id })}`, 14, 30);
     }
@@ -257,9 +302,9 @@ export default function Dashboard() {
           >
             <ClipboardList size={18} />
             <span>Manajemen Presensi</span>
-            {allPendingRecords.length > 0 && (
+            {totalAllPendingRecords.length > 0 && (
               <span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">
-                {allPendingRecords.length}
+                {totalAllPendingRecords.length}
               </span>
             )}
           </button>
@@ -371,10 +416,21 @@ export default function Dashboard() {
                   </button>
                 </div>
               ) : viewMode === 'khusus' ? (
-                <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-slate-200 w-fit">
-                  <div className="text-center px-4 min-w-[150px] py-1.5">
-                    <span className="block text-sm font-semibold text-slate-700">Kajian Khusus</span>
-                    <span className="block text-xs text-slate-500">Sabtu, 19 Sept 2026</span>
+                <div className="flex flex-wrap items-center gap-3 bg-white p-2.5 rounded-xl shadow-sm border border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-600">Pilih Acara Khusus:</span>
+                    <select
+                      value={selectedKhususId}
+                      onChange={(e) => setSelectedKhususId(e.target.value as any)}
+                      className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-emerald-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="khusus_7nov2026">Sabtu, 7 Nov 2026 - Berusaha Menjadi Pegawai Teladan</option>
+                      <option value="khusus_19sept2026">Sabtu, 19 Sept 2026 (Arsip)</option>
+                      <option value="all_khusus">Semua Kajian Khusus</option>
+                    </select>
+                  </div>
+                  <div className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/60 hidden sm:inline-block">
+                    Murni Presensi Kajian Khusus (Tanpa Presensi Rutin)
                   </div>
                 </div>
               ) : (
@@ -445,7 +501,7 @@ export default function Dashboard() {
                             </td>
                             <td className="px-6 py-4">
                               <div className="text-sm text-slate-700">{format(new Date(record.date), "dd MMM yyyy", { locale: id })}</div>
-                              <div className="text-xs text-slate-500 mt-0.5">{schedule ? `${schedule.dayName} - ${schedule.ustadz}` : '-'}</div>
+                              <div className="text-xs text-slate-500 mt-0.5">{getScheduleLabel(record.scheduleId)}</div>
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex items-center justify-end gap-2">
@@ -550,8 +606,9 @@ export default function Dashboard() {
                             onClick={() => {
                               setEditingCivitas(r);
                               if (viewMode === 'khusus') {
-                                setEditScheduleId('khusus_19sept2026');
-                                setEditDate('2026-09-19');
+                                const targetId = selectedKhususId !== 'all_khusus' ? selectedKhususId : 'khusus_7nov2026';
+                                setEditScheduleId(targetId);
+                                setEditDate(targetId === 'khusus_19sept2026' ? '2026-09-19' : '2026-11-07');
                               } else {
                                 setEditScheduleId(schedules[0].id);
                                 setEditDate(format(new Date(), 'yyyy-MM-dd'));
@@ -613,17 +670,33 @@ export default function Dashboard() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Jadwal Kajian yang Dihadiri</label>
-                <select
-                  value={editScheduleId}
-                  onChange={(e) => setEditScheduleId(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-white"
-                >
-                  {schedules.map(s => (
-                    <option key={s.id} value={s.id}>{s.dayName} - {s.ustadz} ({s.kitab})</option>
-                  ))}
-                  <option value="khusus_19sept2026">Kajian Khusus Guru/Civitas (Sabtu, 19 Sept)</option>
-                </select>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  {viewMode === 'khusus' ? 'Acara Kajian Khusus yang Dihadiri' : 'Jadwal Kajian yang Dihadiri'}
+                </label>
+                {viewMode === 'khusus' ? (
+                  <select
+                    value={editScheduleId}
+                    onChange={(e) => {
+                      setEditScheduleId(e.target.value);
+                      if (e.target.value === 'khusus_7nov2026') setEditDate('2026-11-07');
+                      if (e.target.value === 'khusus_19sept2026') setEditDate('2026-09-19');
+                    }}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-white font-medium text-slate-800 text-sm"
+                  >
+                    <option value="khusus_7nov2026">Kajian Khusus: Berusaha Menjadi Pegawai Teladan (Sabtu, 7 Nov 2026)</option>
+                    <option value="khusus_19sept2026">Kajian Khusus (Arsip Sabtu, 19 Sept 2026)</option>
+                  </select>
+                ) : (
+                  <select
+                    value={editScheduleId}
+                    onChange={(e) => setEditScheduleId(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow bg-white text-sm"
+                  >
+                    {schedules.map(s => (
+                      <option key={s.id} value={s.id}>{s.dayName} - {s.ustadz} ({s.kitab})</option>
+                    ))}
+                  </select>
+                )}
               </div>
               
               {existingRecord && (
